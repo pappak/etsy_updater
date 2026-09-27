@@ -25,6 +25,8 @@ import threading
 import tempfile
 import uuid
 
+import requests
+
 from werkzeug.utils import secure_filename
 
 from dotenv import load_dotenv
@@ -58,10 +60,21 @@ def _load_version():
 
 APP_VERSION = _load_version()
 
+# Sibling LWSG Sale Tracker app: built SPA served under /sale-tracker,
+# its FastAPI backend proxied on /api, and a direct link for the dev server.
+SALE_TRACKER_DIST = Path(
+    os.getenv(
+        "SALE_TRACKER_DIST",
+        Path(__file__).resolve().parent.parent / "LWSG-Sale-Tracker" / "frontend" / "dist",
+    )
+)
+SALE_TRACKER_API = os.getenv("SALE_TRACKER_API", "http://localhost:8000").rstrip("/")
+SALE_TRACKER_DIRECT_URL = os.getenv("SALE_TRACKER_DIRECT_URL", "http://localhost:3000")
+
 
 @app.context_processor
 def inject_app_version():
-    return {"app_version": APP_VERSION}
+    return {"app_version": APP_VERSION, "sale_tracker_url": SALE_TRACKER_DIRECT_URL}
 
 
 @app.template_filter("timestamp_to_date")
@@ -711,6 +724,68 @@ def sku_generator(asset_path):
         return "Not found", 404
     response = make_response(send_from_directory(generator_root, "logo.png"))
     response.headers["Cache-Control"] = "public, max-age=3600"
+    return response
+
+
+# ---- LWSG Sale Tracker (built SPA served from the sibling project) ----
+
+
+@app.route("/sale-tracker")
+@app.route("/sale-tracker/<path:asset_path>")
+@login_required
+def sale_tracker(asset_path=""):
+    """Serve the Sale Tracker SPA under this app's origin."""
+    root = SALE_TRACKER_DIST.resolve()
+    if not root.is_dir():
+        flash(
+            'Sale Tracker build not found. Run: cd "LWSG-Sale-Tracker/frontend" '
+            "&& npm run build:embed",
+            "warning",
+        )
+        return redirect(url_for("dashboard"))
+
+    if asset_path:
+        candidate = (root / asset_path).resolve()
+        if candidate.is_file() and candidate.is_relative_to(root):
+            return send_from_directory(root, asset_path)
+
+    # Unknown path → hand it to the SPA router (history fallback).
+    return send_from_directory(root, "index.html")
+
+
+@app.route("/api/<path:api_path>", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+@login_required
+def proxy_sale_tracker_api(api_path):
+    """Forward Sale Tracker API calls to its FastAPI backend.
+
+    This app's own /api routes are literal paths, so they win the routing;
+    anything else belongs to the Sale Tracker.
+    """
+    url = f"{SALE_TRACKER_API}/api/{api_path}"
+    method = request.method
+    headers = {"Content-Type": request.content_type} if request.content_type else {}
+    try:
+        upstream = requests.request(
+            method,
+            url,
+            params=request.args,
+            data=request.get_data() if method not in ("GET", "HEAD") else None,
+            headers=headers,
+            timeout=60,
+        )
+    except requests.exceptions.RequestException as e:
+        return jsonify({
+            "error": (
+                f"Sale Tracker backend is not reachable at {SALE_TRACKER_API} ({e}). "
+                "Start it with: cd LWSG-Sale-Tracker && .venv/bin/uvicorn backend.app:app --port 8000"
+            )
+        }), 502
+
+    hop_by_hop = {"content-encoding", "content-length", "transfer-encoding", "connection"}
+    response = make_response(upstream.content, upstream.status_code)
+    for key, value in upstream.raw.headers.items():
+        if key.lower() not in hop_by_hop:
+            response.headers[key] = value
     return response
 
 
