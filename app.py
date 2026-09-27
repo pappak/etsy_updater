@@ -16,8 +16,16 @@ from flask import (
     jsonify,
     url_for,
     flash,
+    send_from_directory,
+    make_response,
 )
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+import threading
+import tempfile
+import uuid
+
+from werkzeug.utils import secure_filename
 
 from dotenv import load_dotenv
 
@@ -36,6 +44,24 @@ app.secret_key = os.getenv("FLASK_SECRET_KEY", secrets.token_hex(32))
 
 # Ensure local stats DB is ready
 init_db()
+
+APP_VERSION_FILE = Path(__file__).resolve().with_name("VERSION")
+
+
+def _load_version():
+    """Read the release version shown in the UI."""
+    try:
+        return APP_VERSION_FILE.read_text(encoding="utf-8").strip() or "0.0.0"
+    except OSError:
+        return "0.0.0"
+
+
+APP_VERSION = _load_version()
+
+
+@app.context_processor
+def inject_app_version():
+    return {"app_version": APP_VERSION}
 
 
 @app.template_filter("timestamp_to_date")
@@ -369,12 +395,13 @@ def update_listing(listing_id):
         if val is not None and val.strip():
             update_fields[field] = val.strip()
 
-    # Numeric fields
+    # Numeric fields — Etsy ignores these on PATCH, so they go through inventory
+    numeric_fields = {}
     for field in ["price", "quantity"]:
         val = request.form.get(field)
         if val is not None and val.strip():
             try:
-                update_fields[field] = float(val) if field == "price" else int(val)
+                numeric_fields[field] = float(val) if field == "price" else int(val)
             except ValueError:
                 flash(f"Invalid value for {field}", "warning")
 
@@ -382,13 +409,16 @@ def update_listing(listing_id):
     if "tags" in update_fields and isinstance(update_fields["tags"], str):
         update_fields["tags"] = [t.strip() for t in update_fields["tags"].split(",") if t.strip()]
 
-    if not update_fields:
+    if not update_fields and not numeric_fields:
         flash("No fields to update.", "warning")
         return redirect(url_for("listing_detail", listing_id=listing_id))
 
     try:
         shop_id = session.get("shop_id")
-        result = client.update_listing(listing_id, shop_id=shop_id, **update_fields)
+        if update_fields:
+            client.update_listing(listing_id, shop_id=shop_id, **update_fields)
+        if numeric_fields:
+            client.set_listing_price_quantity(listing_id, **numeric_fields)
         save_client_tokens(client)
         flash(f"Listing #{listing_id} updated successfully!", "success")
     except Exception as e:
@@ -593,11 +623,187 @@ def api_listing_snapshots():
     return jsonify(result)
 
 
-@app.route("/sku-generator")
+@app.route("/sku-generator", defaults={"asset_path": ""})
+@app.route("/sku-generator/<path:asset_path>")
 @login_required
-def sku_generator():
-    """SKU code generator tool."""
-    return render_template("sku_generator.html")
+def sku_generator(asset_path):
+    """Serve the standalone SKU generator inside the authenticated Etsy app."""
+    generator_root = Path(__file__).resolve().parent.parent / "SKU Code Generator"
+    if not generator_root.is_dir():
+        flash("SKU Generator folder is not available on this machine.", "warning")
+        return redirect(url_for("dashboard"))
+
+    relative_path = asset_path or "sku-generator.html"
+    if relative_path == "sku-generator.html":
+        # Keep all root-absolute assets and print-logo references within the app.
+        html = (generator_root / relative_path).read_text(encoding="utf-8")
+        html = html.replace('href="/"', 'href="/dashboard"')
+        html = html.replace('src="/logo.png"', 'src="/sku-generator/logo.png"')
+        html = html.replace("const HEADER_LOGO_PNG = '/logo.png';", "const HEADER_LOGO_PNG = '/sku-generator/logo.png';")
+        html = html.replace("new URL('/logo.png', window.location.origin)", "new URL('/sku-generator/logo.png', window.location.origin)")
+
+        # The external generator keeps its original UI and local settings, while
+        # shared SKU history is loaded/saved through this authenticated app.
+        history_json = json.dumps(_read_sku_history(), ensure_ascii=False).replace("<", "\\u003c")
+        html = html.replace(
+            '<script>',
+            '<script>window.__SHARED_SKU_HISTORY__ = ' + history_json + '; </script>\n<script>',
+            1,
+        )
+        old_save = """    function saveToLocalStorage() {
+      try {
+        localStorage.setItem('texstyls-generated-skus', JSON.stringify(skuHistory));
+      } catch (err) {
+        console.warn('Could not save to localStorage:', err);
+      }
+    }"""
+        new_save = """    let sharedSaveTimer = null;
+    function saveToLocalStorage() {
+      try {
+        const data = JSON.stringify(skuHistory);
+        localStorage.setItem('texstyls-generated-skus', data);
+        clearTimeout(sharedSaveTimer);
+        sharedSaveTimer = setTimeout(() => {
+          fetch('/api/sku-history', {
+            method: 'PUT',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: data
+          }).then(response => {
+            if (!response.ok) throw new Error('Shared history save failed');
+            showSyncStatus('active', 'Shared history synced');
+          }).catch(() => showSyncStatus('error', 'Shared history save failed'));
+        }, 350);
+      } catch (err) {
+        console.warn('Could not save SKU history:', err);
+      }
+    }"""
+        if old_save not in html:
+            app.logger.error("External SKU generator changed: local history save hook not found")
+            return "SKU Generator integration needs an update.", 500
+        html = html.replace(old_save, new_save, 1)
+        html = html.replace(
+            "      // Restore sync from the persisted handle — no file picker needed when the\n      // browser still grants permission",
+            "      // Merge shared history from the Etsy app with this browser's local history.\n      mergeSKUs(window.__SHARED_SKU_HISTORY__);\n      saveToLocalStorage();\n\n      // Shared history is synced through the authenticated Etsy app API.",
+            1,
+        )
+        # Suppress the standalone generator's optional file-picker sync setup;
+        # the app now provides shared history across browsers and devices.
+        sync_start = html.find("      const syncEnabled = localStorage.getItem(SYNC_STORAGE_KEY);", html.find("async function init()"))
+        sync_end = html.find("      updateHistoryDisplay();", sync_start)
+        if sync_start < 0 or sync_end < 0:
+            app.logger.error("External SKU generator changed: sync initialization block not found")
+            return "SKU Generator integration needs an update.", 500
+        html = html[:sync_start] + "      showSyncStatus('active', 'Shared history synced with this app');\n      document.getElementById('syncBanner').classList.remove('show');\n\n" + html[sync_end:]
+        html = html.replace(
+            "        localStorage.removeItem('texstyls-generated-skus');\n        updateHistoryDisplay();",
+            "        localStorage.removeItem('texstyls-generated-skus');\n        saveToLocalStorage();\n        updateHistoryDisplay();",
+            1,
+        )
+        response = make_response(html)
+        response.headers["Content-Type"] = "text/html; charset=utf-8"
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    # Only expose the generator logo; do not make its history JSON or source
+    # files downloadable through the asset route.
+    if asset_path != "logo.png":
+        return "Not found", 404
+    response = make_response(send_from_directory(generator_root, "logo.png"))
+    response.headers["Cache-Control"] = "public, max-age=3600"
+    return response
+
+
+# Persist the standalone generator's shared SKU-history file beside its source.
+SKU_HISTORY_FILE = Path(__file__).resolve().parent.parent / "SKU Code Generator" / "texstyls-sku-history.json"
+SKU_HISTORY_LOCK = threading.Lock()
+
+
+def _read_sku_history():
+    try:
+        data = json.loads(SKU_HISTORY_FILE.read_text(encoding="utf-8"))
+        return data if isinstance(data, list) else []
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
+@app.route("/api/sku-history", methods=["GET", "PUT"])
+@login_required
+def api_sku_history():
+    """Read or save shared SKU history for the embedded generator."""
+    if request.method == "GET":
+        return jsonify(_read_sku_history())
+
+    data = request.get_json(silent=True)
+    if not isinstance(data, list):
+        return jsonify({"error": "Expected a JSON array"}), 400
+
+    try:
+        with SKU_HISTORY_LOCK:
+            # Atomic replacement prevents interrupted requests from corrupting history.
+            SKU_HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+            fd, temp_name = tempfile.mkstemp(
+                prefix=".sku-history-", suffix=".tmp", dir=SKU_HISTORY_FILE.parent
+            )
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as temp_file:
+                    json.dump(data, temp_file, ensure_ascii=False, indent=2)
+                    temp_file.flush()
+                    os.fsync(temp_file.fileno())
+                os.replace(temp_name, SKU_HISTORY_FILE)
+            finally:
+                if os.path.exists(temp_name):
+                    os.unlink(temp_name)
+    except OSError:
+        app.logger.exception("Unable to save shared SKU history")
+        return jsonify({"error": "Could not save SKU history"}), 500
+    return jsonify({"saved": len(data)})
+
+
+@app.route("/api/sku-history/import", methods=["POST"])
+@login_required
+def api_sku_history_import():
+    """Merge an uploaded history export with the shared history, preserving unique SKUs."""
+    uploaded = request.files.get("file")
+    if not uploaded or not uploaded.filename:
+        return jsonify({"error": "Choose a JSON history file"}), 400
+    if Path(secure_filename(uploaded.filename)).suffix.lower() != ".json":
+        return jsonify({"error": "Only JSON files are supported"}), 400
+    try:
+        incoming = json.loads(uploaded.read().decode("utf-8-sig"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return jsonify({"error": "That file is not valid JSON"}), 400
+    if not isinstance(incoming, list):
+        return jsonify({"error": "Expected a JSON array"}), 400
+
+    with SKU_HISTORY_LOCK:
+        history = _read_sku_history()
+        seen = {str(entry.get("code", "")).strip().upper() for entry in history if isinstance(entry, dict)}
+        added = 0
+        for entry in incoming:
+            if not isinstance(entry, dict):
+                continue
+            code = str(entry.get("code", "")).strip().upper()
+            if code and code not in seen:
+                history.append(entry)
+                seen.add(code)
+                added += 1
+        try:
+            SKU_HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+            fd, temp_name = tempfile.mkstemp(prefix=".sku-history-", suffix=".tmp", dir=SKU_HISTORY_FILE.parent)
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as temp_file:
+                    json.dump(history, temp_file, ensure_ascii=False, indent=2)
+                    temp_file.flush()
+                    os.fsync(temp_file.fileno())
+                os.replace(temp_name, SKU_HISTORY_FILE)
+            finally:
+                if os.path.exists(temp_name):
+                    os.unlink(temp_name)
+        except OSError:
+            app.logger.exception("Unable to merge shared SKU history")
+            return jsonify({"error": "Could not save SKU history"}), 500
+    return jsonify({"added": added, "total": len(history)})
 
 
 @app.route("/bulk-update", methods=["GET", "POST"])
@@ -621,9 +827,26 @@ def bulk_update():
 
         results = {"success": [], "failed": []}
         shop_id = session.get("shop_id")
+
+        # Price and quantity live on the listing's inventory, not on PATCH
+        raw_value = value.strip()
+        numeric_value = None
+        if field in ("price", "quantity"):
+            try:
+                numeric_value = float(raw_value) if field == "price" else int(raw_value)
+            except ValueError:
+                flash(f"Please enter a valid number for {field}.", "warning")
+                return redirect(url_for("bulk_update"))
+            if numeric_value < 0:
+                flash(f"{field} cannot be negative.", "warning")
+                return redirect(url_for("bulk_update"))
+
         for lid in selected_ids:
             try:
-                client.update_listing(int(lid), shop_id=shop_id, **{field: value.strip()})
+                if field in ("price", "quantity"):
+                    client.set_listing_price_quantity(int(lid), **{field: numeric_value})
+                else:
+                    client.update_listing(int(lid), shop_id=shop_id, **{field: raw_value})
                 results["success"].append(lid)
             except Exception as e:
                 results["failed"].append({"id": lid, "error": str(e)})

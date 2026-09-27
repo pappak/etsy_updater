@@ -12,6 +12,20 @@ import requests
 
 API_BASE = "https://openapi.etsy.com/v3"
 
+# Read-only inventory keys Etsy rejects on PUT, and the keys it requires.
+_INVENTORY_PROPERTY_KEYS = (
+    "property_id",
+    "property_name",
+    "scale_id",
+    "value_ids",
+    "values",
+)
+_INVENTORY_ON_PROPERTY_KEYS = (
+    "price_on_property",
+    "quantity_on_property",
+    "sku_on_property",
+)
+
 
 def generate_pkce_pair():
     """Generate PKCE code verifier and code challenge (S256)."""
@@ -126,6 +140,15 @@ class EtsyClient:
         resp.raise_for_status()
         return resp.json()
 
+    def _put(self, path, payload):
+        """PUT request to Etsy API with a JSON body."""
+        headers = self._headers()
+        headers["Content-Type"] = "application/json"
+        url = f"{API_BASE}{path}"
+        resp = requests.put(url, headers=headers, json=payload)
+        resp.raise_for_status()
+        return resp.json()
+
     def _post(self, path, data=None, files=None):
         """POST request to Etsy API."""
         headers = self._headers()
@@ -181,6 +204,86 @@ class EtsyClient:
         if shop_id:
             return self._patch(f"/application/shops/{shop_id}/listings/{listing_id}", data)
         return self._patch(f"/application/listings/{listing_id}", data)
+
+    def set_listing_price_quantity(self, listing_id, price=None, quantity=None):
+        """Set the price and/or quantity of a listing through its inventory.
+
+        Etsy silently ignores `price` and `quantity` on PATCH updateListing
+        (HTTP 200, value unchanged) because those values live on the listing's
+        inventory offerings. They must be written with PUT inventory instead.
+        The change is verified against the listing afterwards so callers never
+        get a false success.
+        """
+        if price is None and quantity is None:
+            return self.get_listing(listing_id)
+
+        inventory = self.get_listing_inventory(listing_id)
+        offerings_count = sum(
+            len(product.get("offerings", []))
+            for product in inventory.get("products", [])
+        )
+        if quantity is not None and offerings_count > 1:
+            raise ValueError(
+                "Quantity is tracked per variant on this listing; "
+                "set it from the listing's inventory instead."
+            )
+        if price is not None and (inventory.get("price_on_property") or []):
+            raise ValueError(
+                "This listing has a separate price per variant; "
+                "set prices from the listing's inventory instead."
+            )
+
+        products = []
+        for product in inventory.get("products", []):
+            offerings = []
+            for offering in product.get("offerings", []):
+                if price is not None:
+                    new_price = round(float(price), 2)
+                else:
+                    money = offering.get("price") or {}
+                    new_price = money.get("amount", 0) / money.get("divisor", 1)
+                new_offering = {
+                    "quantity": int(quantity) if quantity is not None
+                    else offering.get("quantity", 0),
+                    "is_enabled": offering.get("is_enabled", True),
+                    "price": new_price,
+                }
+                readiness = offering.get("readiness_state_id")
+                if readiness is not None:
+                    new_offering["readiness_state_id"] = readiness
+                offerings.append(new_offering)
+
+            new_product = {"offerings": offerings}
+            if product.get("sku"):
+                new_product["sku"] = product["sku"]
+            property_values = [
+                {key: pv[key] for key in _INVENTORY_PROPERTY_KEYS if key in pv}
+                for pv in product.get("property_values", [])
+            ]
+            if property_values:
+                new_product["property_values"] = property_values
+            products.append(new_product)
+
+        payload = {"products": products}
+        for key in _INVENTORY_ON_PROPERTY_KEYS:
+            if key in inventory:
+                payload[key] = inventory[key]
+
+        self._put(f"/application/listings/{listing_id}/inventory", payload)
+
+        updated = self.get_listing(listing_id)
+        if price is not None:
+            money = updated.get("price") or {}
+            actual = money.get("amount", 0) / money.get("divisor", 1)
+            if abs(actual - float(price)) > 0.005:
+                raise ValueError(
+                    f"Etsy did not save the price (still {actual:.2f})."
+                )
+        if quantity is not None and updated.get("quantity") != int(quantity):
+            raise ValueError(
+                f"Etsy did not save the quantity (still {updated.get('quantity')})."
+            )
+        return updated
 
     def get_listing_images(self, listing_id):
         """Get images for a listing."""
