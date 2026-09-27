@@ -428,12 +428,17 @@ def update_listing(listing_id):
 
     try:
         shop_id = session.get("shop_id")
+        note = None
         if update_fields:
             client.update_listing(listing_id, shop_id=shop_id, **update_fields)
         if numeric_fields:
-            client.set_listing_price_quantity(listing_id, **numeric_fields)
+            result = client.set_listing_price_quantity(listing_id, **numeric_fields)
+            if isinstance(result, dict):
+                note = result.get("note")
         save_client_tokens(client)
         flash(f"Listing #{listing_id} updated successfully!", "success")
+        if note:
+            flash(f"Listing #{listing_id}: {note}", "warning")
     except Exception as e:
         flash(f"Error updating listing #{listing_id}: {e}", "danger")
 
@@ -802,6 +807,49 @@ def _read_sku_history():
         return []
 
 
+def _entry_timestamp(entry):
+    """Best-effort modification time for a history entry."""
+    try:
+        return int(entry.get("timestamp") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _merge_history_entries(existing, incoming):
+    """Union two history lists keyed by SKU code.
+
+    Entries already on disk are always kept; incoming entries only replace an
+    existing code when they are newer, so a sync from one computer can never
+    wipe out work saved from another. Returns (merged, added, updated).
+    """
+    merged = {}
+    order = []
+    for entry in existing:
+        if not isinstance(entry, dict):
+            continue
+        key = str(entry.get("code", "")).strip().upper()
+        if key and key not in merged:
+            merged[key] = entry
+            order.append(key)
+
+    added = updated = 0
+    for entry in incoming:
+        if not isinstance(entry, dict):
+            continue
+        key = str(entry.get("code", "")).strip().upper()
+        if not key:
+            continue
+        current = merged.get(key)
+        if current is None:
+            merged[key] = entry
+            order.append(key)
+            added += 1
+        elif entry != current and _entry_timestamp(entry) > _entry_timestamp(current):
+            merged[key] = entry
+            updated += 1
+    return [merged[key] for key in order], added, updated
+
+
 @app.route("/api/sku-history", methods=["GET", "PUT"])
 @login_required
 def api_sku_history():
@@ -815,6 +863,9 @@ def api_sku_history():
 
     try:
         with SKU_HISTORY_LOCK:
+            # Merge instead of overwrite: a computer with a stale local copy
+            # must not delete entries another computer has already saved.
+            history, added, updated = _merge_history_entries(_read_sku_history(), data)
             # Atomic replacement prevents interrupted requests from corrupting history.
             SKU_HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
             fd, temp_name = tempfile.mkstemp(
@@ -822,7 +873,7 @@ def api_sku_history():
             )
             try:
                 with os.fdopen(fd, "w", encoding="utf-8") as temp_file:
-                    json.dump(data, temp_file, ensure_ascii=False, indent=2)
+                    json.dump(history, temp_file, ensure_ascii=False, indent=2)
                     temp_file.flush()
                     os.fsync(temp_file.fileno())
                 os.replace(temp_name, SKU_HISTORY_FILE)
@@ -832,7 +883,7 @@ def api_sku_history():
     except OSError:
         app.logger.exception("Unable to save shared SKU history")
         return jsonify({"error": "Could not save SKU history"}), 500
-    return jsonify({"saved": len(data)})
+    return jsonify({"saved": len(history), "added": added, "updated": updated, "merged": True})
 
 
 @app.route("/api/sku-history/import", methods=["POST"])

@@ -212,21 +212,41 @@ class EtsyClient:
         (HTTP 200, value unchanged) because those values live on the listing's
         inventory offerings. They must be written with PUT inventory instead.
         The change is verified against the listing afterwards so callers never
-        get a false success.
+        get a false success. Returns {"listing": <listing>, "note": <str|None>}
+        where note explains a quantity that had to be skipped.
         """
         if price is None and quantity is None:
-            return self.get_listing(listing_id)
+            return {"listing": self.get_listing(listing_id), "note": None}
 
         inventory = self.get_listing_inventory(listing_id)
-        offerings_count = sum(
-            len(product.get("offerings", []))
+        offerings = [
+            offering
             for product in inventory.get("products", [])
-        )
-        if quantity is not None and offerings_count > 1:
-            raise ValueError(
-                "Quantity is tracked per variant on this listing; "
-                "set it from the listing's inventory instead."
-            )
+            for offering in product.get("offerings", [])
+        ]
+        note = None
+
+        if quantity is not None and len(offerings) > 1:
+            # One number cannot be written to several variants. When every
+            # variant already holds it, the form simply re-sent its current
+            # value: drop it so a price-only edit still saves. Otherwise drop
+            # it and say so — but a quantity-only edit stays an error.
+            unchanged = all(o.get("quantity", 0) == int(quantity) for o in offerings)
+            if not unchanged and price is None:
+                raise ValueError(
+                    "Quantity is tracked per variant on this listing; "
+                    "set it from the listing's inventory instead."
+                )
+            if not unchanged:
+                note = (
+                    "Quantity was left unchanged — this listing keeps stock "
+                    "per variant, so edit it from the inventory editor."
+                )
+            quantity = None
+
+        if price is None and quantity is None:
+            return {"listing": self.get_listing(listing_id), "note": note}
+
         if price is not None and (inventory.get("price_on_property") or []):
             raise ValueError(
                 "This listing has a separate price per variant; "
@@ -235,7 +255,7 @@ class EtsyClient:
 
         products = []
         for product in inventory.get("products", []):
-            offerings = []
+            new_offerings = []
             for offering in product.get("offerings", []):
                 if price is not None:
                     new_price = round(float(price), 2)
@@ -251,9 +271,9 @@ class EtsyClient:
                 readiness = offering.get("readiness_state_id")
                 if readiness is not None:
                     new_offering["readiness_state_id"] = readiness
-                offerings.append(new_offering)
+                new_offerings.append(new_offering)
 
-            new_product = {"offerings": offerings}
+            new_product = {"offerings": new_offerings}
             if product.get("sku"):
                 new_product["sku"] = product["sku"]
             property_values = [
@@ -283,7 +303,7 @@ class EtsyClient:
             raise ValueError(
                 f"Etsy did not save the quantity (still {updated.get('quantity')})."
             )
-        return updated
+        return {"listing": updated, "note": note}
 
     def get_listing_images(self, listing_id):
         """Get images for a listing."""
