@@ -74,7 +74,8 @@ SALE_TRACKER_DIRECT_URL = os.getenv("SALE_TRACKER_DIRECT_URL", "http://localhost
 
 @app.context_processor
 def inject_app_version():
-    return {"app_version": APP_VERSION, "sale_tracker_url": SALE_TRACKER_DIRECT_URL}
+    # Read per request so a VERSION bump shows up without a restart.
+    return {"app_version": _load_version(), "sale_tracker_url": SALE_TRACKER_DIRECT_URL}
 
 
 @app.template_filter("timestamp_to_date")
