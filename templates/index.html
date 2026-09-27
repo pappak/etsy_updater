@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Etsy Listing Manager - Home{% endblock %}
+{% block content %}
+<div class="row min-vh-75 align-items-center" style="min-height: 70vh;">
+    <div class="col-lg-8 mx-auto text-center py-5">
+        <div class="mb-4">
+            <i class="bi bi-shop" style="font-size: 5rem; color: #f56400;"></i>
+        </div>
+        <h1 class="display-4 fw-bold mb-3">Etsy Listing Manager</h1>
+        <p class="lead text-muted mb-4">
+            View, edit, and bulk-update your Etsy listings from one place.
+        </p>
+
+        {% if authenticated %}
+        <div class="row g-4 justify-content-center mb-4">
+            <div class="col-md-4">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body text-center py-4">
+                        <i class="bi bi-grid-3x3-gap fs-1 mb-3 d-block" style="color: #f56400;"></i>
+                        <h5>Dashboard</h5>
+                        <p class="text-muted small">View all your listings with search and filters</p>
+                        <a href="/dashboard" class="btn btn-dark">Go to Dashboard</a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body text-center py-4">
+                        <i class="bi bi-pencil-square fs-1 mb-3 d-block" style="color: #f56400;"></i>
+                        <h5>Bulk Update</h5>
+                        <p class="text-muted small">Mass-edit pricing, quantity, tags, and more</p>
+                        <a href="/bulk-update" class="btn btn-dark">Bulk Update</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <a href="/logout" class="btn btn-outline-danger">
+            <i class="bi bi-box-arrow-right"></i> Disconnect
+        </a>
+        {% else %}
+        <div class="card border-0 shadow-sm mx-auto" style="max-width: 480px;">
+            <div class="card-body p-4">
+                <h5 class="card-title mb-3">Connect your Etsy Shop</h5>
+                <p class="card-text text-muted mb-4">
+                    Sign in with your Etsy account to manage your listings.
+                    You'll be redirected to Etsy to authorize this app.
+                </p>
+                <a href="/login" class="btn btn-dark btn-lg w-100">
+                    <i class="bi bi-box-arrow-in-right me-2"></i>Sign in with Etsy
+                </a>
+                <p class="text-muted small mt-3 mb-0">
+                    <i class="bi bi-shield-check"></i>
+                    Your credentials are never stored on our servers.
+                </p>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Bulk Update Results{% endblock %}
+{% block content %}
+<div class="mt-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/dashboard">Dashboard</a></li>
+            <li class="breadcrumb-item"><a href="/bulk-update">Bulk Update</a></li>
+            <li class="breadcrumb-item active">Results</li>
+        </ol>
+    </nav>
+
+    <div class="card border-0 shadow-sm">
+        <div class="card-body">
+            <h4 class="mb-3">
+                <i class="bi bi-check-circle text-success me-2"></i>
+                Bulk Update Results
+            </h4>
+            <p class="mb-3">
+                Field: <strong>{{ field }}</strong> = <code>{{ value }}</code>
+            </p>
+
+            {% if results.success %}
+            <div class="alert alert-success">
+                <i class="bi bi-check-lg me-1"></i>
+                <strong>{{ results.success | length }}</strong> listing(s) updated successfully.
+                <ul class="mb-0 mt-1">
+                    {% for id in results.success %}
+                    <li><a href="/listing/{{ id }}">Listing #{{ id }}</a></li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+
+            {% if results.failed %}
+            <div class="alert alert-danger">
+                <i class="bi bi-x-lg me-1"></i>
+                <strong>{{ results.failed | length }}</strong> listing(s) failed.
+                <ul class="mb-0 mt-1">
+                    {% for fail in results.failed %}
+                    <li><a href="/listing/{{ fail.id }}" class="text-danger">Listing #{{ fail.id }}</a>: {{ fail.error }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+
+            <div class="d-flex gap-2 mt-3">
+                <a href="/bulk-update" class="btn btn-dark">
+                    <i class="bi bi-arrow-repeat me-1"></i> Another Update
+                </a>
+                <a href="/dashboard" class="btn btn-outline-dark">
+                    <i class="bi bi-grid-3x3-gap me-1"></i> Dashboard
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

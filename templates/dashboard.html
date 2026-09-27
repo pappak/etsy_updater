@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}{{ shop_name }} - Dashboard{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mt-4 mb-3">
+    <div>
+        <h2 class="mb-1"><i class="bi bi-shop me-2"></i>{{ shop_name }}</h2>
+        <p class="text-muted mb-0">{{ total }} listing{% if total != 1 %}s{% endif %}</p>
+    </div>
+    <div>
+        <a href="/bulk-update" class="btn btn-dark">
+            <i class="bi bi-pencil-square me-1"></i> Bulk Update
+        </a>
+    </div>
+</div>
+
+{% if listings %}
+<div class="row g-3" id="listings-grid">
+    {% for listing in listings %}
+    {% set listing_data = listing.get('listing', listing) %}
+    {% set listing_id = listing_data.get('listing_id', listing.get('id')) %}
+    {% set title = listing_data.get('title', 'Untitled') %}
+    {% set state = listing_data.get('state', 'unknown') %}
+    {% set price = listing_data.get('price', {}) %}
+    {% set price_amount = price.get('amount', 0) / price.get('divisor', 1) if price else 0 %}
+    {% set price_currency = price.get('currency_code', 'USD') if price else 'USD' %}
+    {% set quantity = listing_data.get('quantity', 0) %}
+    {% set views = listing_data.get('views', 0) %}
+    {% set image = listing_data.get('images', []) %}
+    {% set img_url = image[0].get('url_570xN', '') if image else '' %}
+    <div class="col-sm-6 col-lg-4 col-xl-3">
+        <div class="card listing-card border-0 shadow-sm h-100">
+            <div class="position-relative">
+                {% if img_url %}
+                <img src="{{ img_url }}" class="listing-thumb card-img-top" alt="{{ title }}">
+                {% else %}
+                <div class="listing-thumb bg-light d-flex align-items-center justify-content-center text-muted" style="height:200px;">
+                    <i class="bi bi-image" style="font-size: 3rem;"></i>
+                </div>
+                {% endif %}
+                <span class="position-absolute top-0 end-0 m-2 badge bg-{{ 'success' if state == 'active' else 'secondary' if state == 'draft' else 'danger' }}">
+                    {{ state }}
+                </span>
+            </div>
+            <div class="card-body d-flex flex-column">
+                <h6 class="card-title text-truncate" title="{{ title }}">{{ title }}</h6>
+                <div class="d-flex justify-content-between align-items-center mt-auto">
+                    <div>
+                        <strong class="fs-5">${{ "%.2f"|format(price_amount) }}</strong>
+                        <small class="text-muted ms-1">{{ price_currency }}</small>
+                    </div>
+                    <small class="text-muted">Qty: {{ quantity }}</small>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mt-2">
+                    <small class="text-muted"><i class="bi bi-eye"></i> {{ views }}</small>
+                    <a href="/listing/{{ listing_id }}" class="btn btn-sm btn-success">Edit</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="text-center py-5">
+    <i class="bi bi-inbox" style="font-size: 4rem; color: #ccc;"></i>
+    <h4 class="mt-3 text-muted">No listings found</h4>
+    <p class="text-muted">Your shop doesn't have any listings yet, or there was an error fetching them.</p>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,336 @@
+{% extends "base.html" %}
+{% block title %}Edit Listing #{{ listing.get('listing_id') }}{% endblock %}
+{% block content %}
+{% set listing_id = listing.get('listing_id') %}
+{% set price = listing.get('price', {}) %}
+{% set price_amount = price.get('amount', 0) / price.get('divisor', 1) if price else 0 %}
+{% set price_currency = price.get('currency_code', 'USD') if price else 'USD' %}
+
+<div class="mt-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/dashboard">Dashboard</a></li>
+            <li class="breadcrumb-item active">Listing #{{ listing_id }}</li>
+        </ol>
+    </nav>
+
+    <div class="row">
+        <!-- Images column -->
+        <div class="col-lg-5 mb-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h5 class="card-title mb-0">Images</h5>
+                    </div>
+                    <div id="image-sortable" class="row g-2">
+                        {% for img in images %}
+                        <div class="col-6 image-item" data-image-id="{{ img.get('listing_image_id') }}">
+                            <div class="position-relative">
+                                <img src="{{ img.get('url_570xN', img.get('url_fullxfull', '')) }}"
+                                     class="img-fluid rounded" alt="Listing image">
+                                <span class="position-absolute top-0 start-0 badge bg-dark m-1">{{ loop.index }}</span>
+                            </div>
+                        </div>
+                        {% else %}
+                        <div class="col-12 text-center py-4 text-muted">
+                            <i class="bi bi-image fs-1"></i>
+                            <p class="mt-2">No images</p>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Current values card -->
+            <div class="card border-0 shadow-sm mt-3">
+                <div class="card-body">
+                    <h5 class="card-title">Current Values</h5>
+                    <table class="table table-sm">
+                        <tr><td>State</td><td><span class="badge bg-{{ 'success' if listing.get('state') == 'active' else 'secondary' }}">{{ listing.get('state') }}</span></td></tr>
+                        <tr><td>SKU</td><td class="font-monospace">{{ listing.get('skus', []) | join(', ') or '—' }}</td></tr>
+                        <tr><td>Price</td><td>${{ "%.2f"|format(price_amount) }} {{ price_currency }}</td></tr>
+                        <tr><td>Quantity</td><td>{{ listing.get('quantity', 0) }}</td></tr>
+                        <tr><td>Views</td><td>{{ listing.get('views', 0) }}</td></tr>
+                        <tr><td>Favorites</td><td>{{ listing.get('num_favorers', 0) }}</td></tr>
+                        <tr><td>Created</td><td>{{ listing.get('creation_tsz', 0) | int | timestamp_to_date }}</td></tr>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Edit form column -->
+        <div class="col-lg-7">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">Edit Listing</h5>
+                    <form method="POST" action="/listing/{{ listing_id }}/update">
+                        <div class="mb-3">
+                            <label class="form-label">Title</label>
+                            <input type="text" name="title" class="form-control"
+                                   value="{{ listing.get('title', '') }}" maxlength="255">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Description</label>
+                            <textarea name="description" class="form-control" rows="6"
+                                      maxlength="65535">{{ listing.get('description', '') }}</textarea>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col">
+                                <label class="form-label">Price</label>
+                                <div class="input-group">
+                                    <span class="input-group-text">$</span>
+                                    <input type="number" name="price" class="form-control"
+                                           value="{{ price_amount }}" step="0.01" min="0">
+                                </div>
+                            </div>
+                            <div class="col">
+                                <label class="form-label">Quantity</label>
+                                <input type="number" name="quantity" class="form-control"
+                                       value="{{ listing.get('quantity', 0) }}" min="0">
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Tags (comma-separated)</label>
+                            <input type="text" name="tags" class="form-control"
+                                   value="{{ listing.get('tags', []) | join(', ') }}" maxlength="255">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Materials (comma-separated)</label>
+                            <input type="text" name="materials" class="form-control"
+                                   value="{{ listing.get('materials', []) | join(', ') }}">
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col">
+                                <label class="form-label">State</label>
+                                <select name="state" class="form-select">
+                                    <option value="">— Keep current —</option>
+                                    <option value="active" {% if listing.get('state') == 'active' %}selected{% endif %}>Active</option>
+                                    <option value="draft" {% if listing.get('state') == 'draft' %}selected{% endif %}>Draft</option>
+                                    <option value="inactive" {% if listing.get('state') == 'inactive' %}selected{% endif %}>Inactive</option>
+                                </select>
+                            </div>
+                            <div class="col">
+                                <label class="form-label">Listing Type</label>
+                                <select name="listing_type" class="form-select">
+                                    <option value="">— Keep current —</option>
+                                    <option value="physical" {% if listing.get('listing_type') == 'physical' %}selected{% endif %}>Physical</option>
+                                    <option value="download" {% if listing.get('listing_type') == 'download' %}selected{% endif %}>Digital</option>
+                                    <option value="both" {% if listing.get('listing_type') == 'both' %}selected{% endif %}>Both</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-dark btn-lg">
+                                <i class="bi bi-check-lg me-1"></i> Save Changes
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Inventory section -->
+            {% if inventory and inventory.get('products') %}
+            <div class="card border-0 shadow-sm mt-3">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">Inventory / Variants</h5>
+                    <table class="table table-sm table-bordered">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Variant</th>
+                                <th>Price</th>
+                                <th>Quantity</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        {% for product in inventory.get('products', []) %}
+                            {% set offerings = product.get('offerings', []) %}
+                            {% set offering = offerings[0] if offerings else {} %}
+                            {% set price_data = offering.get('price', {}) %}
+                            {% set variant_price = price_data.get('amount', 0) / price_data.get('divisor', 100) if price_data else 0 %}
+                            {% set prop_values = product.get('property_values', []) %}
+                            {% set variant_label = prop_values[0].get('values', ['Default'])[0] if prop_values else 'Default' %}
+                            <tr>
+                                <td>{{ variant_label }}</td>
+                                <td>${{ "%.2f"|format(variant_price) }}</td>
+                                <td>{{ offering.get('quantity', '—') }}</td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Views over time -->
+            <div class="card border-0 shadow-sm mt-3">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="bi bi-graph-up me-1"></i>Views Over Time</h5>
+                    {% if snapshots | length == 0 %}
+                    <p class="text-muted mb-0">Check back after a few visits — this chart fills in over time.</p>
+                    {% elif snapshots | length == 1 %}
+                    <p class="text-muted mb-0">First data point recorded today. Revisit tomorrow to see a trend.</p>
+                    {% else %}
+                    <div style="position:relative; height:180px">
+                        <canvas id="viewsChart"></canvas>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+{% if snapshots | length >= 2 %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+const labels = {{ snapshots | map(attribute='recorded_at') | list | tojson }};
+const viewsData = {{ snapshots | map(attribute='views') | list | tojson }};
+const favsData = {{ snapshots | map(attribute='favorites') | list | tojson }};
+
+new Chart(document.getElementById('viewsChart'), {
+    type: 'line',
+    data: {
+        labels: labels,
+        datasets: [
+            {
+                label: 'Views',
+                data: viewsData,
+                borderColor: '#f56400',
+                backgroundColor: 'rgba(245, 100, 0, 0.15)',
+                fill: true,
+                tension: 0.3,
+                pointRadius: 0,
+                pointHoverRadius: 4,
+            },
+            {
+                label: 'Favorites',
+                data: favsData,
+                borderColor: '#9b59b6',
+                backgroundColor: 'transparent',
+                fill: false,
+                tension: 0.3,
+                pointRadius: 0,
+                pointHoverRadius: 4,
+            }
+        ]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+            legend: { display: true, position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
+            tooltip: {
+                callbacks: {
+                    title: function(items) { return items[0].label; },
+                    label: function(ctx) { return ctx.dataset.label + ': ' + ctx.parsed.y; }
+                }
+            }
+        },
+        scales: {
+            x: {
+                ticks: { font: { size: 10 }, maxRotation: 0 }
+            },
+            y: {
+                beginAtZero: true,
+                ticks: { precision: 0, font: { size: 10 } }
+            }
+        }
+    }
+});
+</script>
+{% endif %}
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+<script>
+// Drag-to-reorder images
+const sortableEl = document.getElementById('image-sortable');
+if (sortableEl) {
+    Sortable.create(sortableEl, {
+        animation: 150,
+        ghostClass: 'opacity-50',
+        onEnd: function() {
+            // Update badge numbers after drag
+            sortableEl.querySelectorAll('.image-item').forEach((el, i) => {
+                el.querySelector('.badge').textContent = i + 1;
+            });
+        }
+    });
+}
+
+async function saveImageOrder(listingId) {
+    const btn = document.getElementById('save-order-btn');
+    const origHTML = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Saving...';
+
+    const imageIds = Array.from(sortableEl.querySelectorAll('.image-item'))
+        .map(el => parseInt(el.dataset.imageId));
+
+    try {
+        const resp = await fetch(`/listing/${listingId}/reorder-images`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({image_ids: imageIds}),
+        });
+        if (!resp.ok) {
+            const err = await resp.json();
+            throw new Error(err.error || 'Failed');
+        }
+        btn.className = 'btn btn-sm btn-success mt-3 w-100';
+        btn.innerHTML = '<i class="bi bi-check-lg me-1"></i> Order Saved';
+        setTimeout(() => {
+            btn.className = 'btn btn-sm btn-outline-secondary mt-3 w-100';
+            btn.innerHTML = origHTML;
+            btn.disabled = false;
+        }, 2500);
+    } catch (err) {
+        btn.className = 'btn btn-sm btn-danger mt-3 w-100';
+        btn.innerHTML = '<i class="bi bi-x-lg me-1"></i> Error: ' + err.message;
+        setTimeout(() => {
+            btn.className = 'btn btn-sm btn-outline-secondary mt-3 w-100';
+            btn.innerHTML = origHTML;
+            btn.disabled = false;
+        }, 3000);
+    }
+}
+
+// Auto-resize textarea for description
+document.querySelector('textarea[name="description"]')?.addEventListener('input', function() {
+    this.style.height = 'auto';
+    this.style.height = this.scrollHeight + 'px';
+});
+
+// Inline save — show "Saved" green button on success
+document.querySelector('form[action*="/update"]')?.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const btn = this.querySelector('button[type="submit"]');
+    const origHTML = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Saving...';
+
+    try {
+        const resp = await fetch(this.action, {
+            method: 'POST',
+            body: new FormData(this),
+        });
+        if (!resp.ok) throw new Error('Save failed');
+        btn.className = 'btn btn-success btn-lg';
+        btn.innerHTML = '<i class="bi bi-check-lg me-1"></i> Saved';
+        setTimeout(() => location.reload(), 1200);
+    } catch (err) {
+        btn.className = 'btn btn-danger btn-lg';
+        btn.innerHTML = '<i class="bi bi-x-lg me-1"></i> Error';
+        setTimeout(() => {
+            btn.className = 'btn btn-dark btn-lg';
+            btn.innerHTML = origHTML;
+            btn.disabled = false;
+        }, 3000);
+    }
+});
+</script>
+{% endblock %}

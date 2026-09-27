@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %}SKU Generator — Etsy Manager{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-12 col-md-8 col-lg-6">
+
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-body p-4">
+                    <h4 class="card-title mb-1">
+                        <i class="bi bi-upc-scan me-2 text-secondary"></i>SKU Generator
+                    </h4>
+                    <p class="text-muted small mb-4">Create standardized Stock Keeping Units for inventory management.</p>
+
+                    {# ── Category code quick-pick ── #}
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Category Code</label>
+                        <div class="d-flex flex-wrap gap-1 mb-2">
+                            {% for code, label in [
+                                ('SC','Scarf'),('CW','Cowl'),('TW','Towel'),('BK','Blanket'),
+                                ('LP','Laprobe'),('WS','Wrap/Shawl'),('HT','Hat'),('PL','Pillow'),
+                                ('NK','Napkins'),('PM','Placemats'),('BG','Bags'),('MT','Mats')
+                            ] %}
+                            <button type="button" class="btn btn-sm btn-outline-secondary code-chip"
+                                    onclick="setPrefix('{{ code }}')" title="{{ label }}">
+                                <span class="fw-bold" style="color:#c0392b;">{{ code }}</span>
+                                <span class="text-muted ms-1" style="font-size:.75rem;">{{ label }}</span>
+                            </button>
+                            {% endfor %}
+                        </div>
+                        <input type="text" class="form-control" id="prefix"
+                               placeholder="Or type your own prefix…" maxlength="6"
+                               style="text-transform:uppercase; font-family:monospace; letter-spacing:.05em;">
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-6">
+                            <label class="form-label fw-semibold">Starting Number</label>
+                            <input type="number" class="form-control" id="startNum" value="1" min="1">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label fw-semibold">Zero Padding</label>
+                            <select class="form-select" id="padding">
+                                <option value="3">001 — 3 digits</option>
+                                <option value="4" selected>0001 — 4 digits</option>
+                                <option value="5">00001 — 5 digits</option>
+                                <option value="6">000001 — 6 digits</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold">Suffix <span class="text-muted fw-normal">(optional — colour / size)</span></label>
+                        <input type="text" class="form-control" id="suffix"
+                               placeholder="e.g. BLK-S" maxlength="10"
+                               style="text-transform:uppercase; font-family:monospace; letter-spacing:.05em;">
+                    </div>
+
+                    <button class="btn btn-dark w-100 py-2 fw-semibold" onclick="generateSKU()">
+                        <i class="bi bi-lightning-charge-fill me-1"></i>Generate SKU
+                    </button>
+                </div>
+            </div>
+
+            {# ── Result ── #}
+            <div class="card border-0 shadow-sm mb-4" id="resultCard" style="display:none!important;">
+                <div class="card-body p-4">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="mb-0 fw-semibold">Generated SKU</h6>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="copyToClipboard()">
+                            <i class="bi bi-clipboard me-1"></i>Copy
+                        </button>
+                    </div>
+                    <div id="outputCode"
+                         class="text-center py-3 px-4 rounded"
+                         style="background:#f8fafc; border:1.5px dashed #cbd5e1;
+                                font-family:monospace; font-size:1.8rem; letter-spacing:.08em;
+                                color:#2563eb; cursor:pointer;"
+                         onclick="copyToClipboard()" title="Click to copy">
+                        ---
+                    </div>
+                </div>
+            </div>
+
+            {# ── History ── #}
+            <div class="card border-0 shadow-sm" id="historyCard" style="display:none!important;">
+                <div class="card-body p-4">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="mb-0 fw-semibold"><i class="bi bi-clock-history me-2 text-secondary"></i>History</h6>
+                        <button class="btn btn-sm btn-outline-danger" onclick="clearHistory()">
+                            <i class="bi bi-trash me-1"></i>Clear
+                        </button>
+                    </div>
+                    <div id="historyList" class="d-flex flex-column gap-2"
+                         style="max-height:260px; overflow-y:auto;">
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function setPrefix(code) {
+    document.getElementById('prefix').value = code;
+    document.querySelectorAll('.code-chip').forEach(b => {
+        const isActive = b.querySelector('.fw-bold').textContent === code;
+        b.classList.toggle('btn-dark', isActive);
+        b.classList.toggle('btn-outline-secondary', !isActive);
+        if (isActive) b.querySelector('.fw-bold').style.color = '#fff';
+        else          b.querySelector('.fw-bold').style.color = '#c0392b';
+    });
+    document.getElementById('prefix').focus();
+}
+
+function generateSKU() {
+    const prefix  = (document.getElementById('prefix').value || '').trim().toUpperCase();
+    const startNum = parseInt(document.getElementById('startNum').value) || 1;
+    const padding  = parseInt(document.getElementById('padding').value);
+    const suffix   = (document.getElementById('suffix').value || '').trim().toUpperCase();
+
+    if (!prefix) {
+        document.getElementById('prefix').focus();
+        document.getElementById('prefix').classList.add('is-invalid');
+        setTimeout(() => document.getElementById('prefix').classList.remove('is-invalid'), 2000);
+        return;
+    }
+
+    const num    = startNum.toString().padStart(padding, '0');
+    const sep    = suffix ? '-' : '';
+    const sku    = `${prefix}-${num}${sep}${suffix}`;
+
+    const out = document.getElementById('outputCode');
+    out.textContent = sku;
+    out.style.color = '#2563eb';
+
+    document.getElementById('resultCard').style.removeProperty('display');
+    addToHistory(sku);
+
+    // auto-increment
+    document.getElementById('startNum').value = startNum + 1;
+}
+
+function copyToClipboard() {
+    const out = document.getElementById('outputCode');
+    const text = out.textContent.trim();
+    if (text === '---' || !text) return;
+
+    navigator.clipboard.writeText(text).then(() => {
+        const orig = out.textContent;
+        out.style.color = '#16a34a';
+        out.textContent = 'Copied!';
+        setTimeout(() => { out.textContent = orig; out.style.color = '#2563eb'; }, 1400);
+    });
+}
+
+function addToHistory(sku) {
+    const list = document.getElementById('historyList');
+    document.getElementById('historyCard').style.removeProperty('display');
+
+    const item = document.createElement('div');
+    item.className = 'd-flex justify-content-between align-items-center px-3 py-2 rounded';
+    item.style.cssText = 'background:#f8fafc; border-left:3px solid #f56400;';
+    item.innerHTML = `
+        <span style="font-family:monospace; font-weight:700;">${sku}</span>
+        <span class="text-muted" style="font-size:.75rem;">${new Date().toLocaleTimeString()}</span>
+    `;
+    list.prepend(item);
+
+    // keep max 20
+    while (list.children.length > 20) list.removeChild(list.lastChild);
+}
+
+function clearHistory() {
+    document.getElementById('historyList').innerHTML = '';
+    document.getElementById('historyCard').style.display = 'none';
+}
+
+// Allow Enter key on inputs to trigger generate
+['prefix','startNum','suffix'].forEach(id => {
+    document.getElementById(id).addEventListener('keydown', e => {
+        if (e.key === 'Enter') generateSKU();
+    });
+});
+</script>
+{% endblock %}

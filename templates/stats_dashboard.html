@@ -1,0 +1,439 @@
+{% extends "base.html" %}
+{% block title %}Shop Stats — {{ shop_name }}{% endblock %}
+{% block content %}
+
+{# ── Page heading ────────────────────────────────────────────── #}
+<div class="mt-4 mb-4">
+    <h2 class="mb-1">
+        <i class="bi bi-graph-up me-2 text-secondary"></i>Shop Stats — {{ shop_name }}
+    </h2>
+    <p class="text-muted mb-0">Views, favorites, and full order history at a glance.
+        <span class="text-muted small ms-2"><i class="bi bi-clock me-1"></i>May take a few seconds — fetching all orders from Etsy.</span>
+    </p>
+</div>
+
+{# ── Summary stat cards ──────────────────────────────────────── #}
+<div class="row g-3 mb-4">
+    <div class="col-6 col-lg">
+        <div class="card stats-card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center mb-2">
+                    <i class="bi bi-tags me-2 text-secondary"></i>
+                    <span class="text-muted text-uppercase small fw-semibold">Listings</span>
+                </div>
+                <div class="fs-3 fw-bold">{{ total_listings }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-lg">
+        <div class="card stats-card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center mb-2">
+                    <i class="bi bi-eye me-2 text-secondary"></i>
+                    <span class="text-muted text-uppercase small fw-semibold">Views</span>
+                </div>
+                <div class="fs-3 fw-bold">{{ total_views }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-lg">
+        <div class="card stats-card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center mb-2">
+                    <i class="bi bi-heart me-2 text-secondary"></i>
+                    <span class="text-muted text-uppercase small fw-semibold">Favorites</span>
+                </div>
+                <div class="fs-3 fw-bold">{{ total_favorites }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-lg">
+        <div class="card stats-card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center mb-2">
+                    <i class="bi bi-bag-check me-2 text-secondary"></i>
+                    <span class="text-muted text-uppercase small fw-semibold">Orders (all time)</span>
+                </div>
+                <div class="fs-3 fw-bold">{{ total_orders }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-lg">
+        <div class="card stats-card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center mb-2">
+                    <i class="bi bi-currency-dollar me-2 text-secondary"></i>
+                    <span class="text-muted text-uppercase small fw-semibold">Revenue (all time)</span>
+                </div>
+                <div class="fs-3 fw-bold">${{ "%.2f"|format(total_revenue) }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ── Revenue / Views chart with toggle ──────────────────────── #}
+{% if monthly_labels or views_labels %}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body">
+        {# Toggle tabs #}
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+            <div class="d-flex align-items-center gap-2">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-bar-chart me-2 text-secondary"></i>
+                </h5>
+                <div class="btn-group" role="group">
+                    <button class="btn btn-sm btn-dark chart-tab-btn active" data-tab="revenue" onclick="switchChartTab('revenue',this)">
+                        <i class="bi bi-currency-dollar me-1"></i>Revenue
+                    </button>
+                    <button class="btn btn-sm btn-outline-dark chart-tab-btn" data-tab="views" onclick="switchChartTab('views',this)">
+                        <i class="bi bi-eye me-1"></i>Views
+                    </button>
+                </div>
+            </div>
+            {# Chart style #}
+            <div class="btn-group" role="group">
+                <button type="button" class="btn btn-sm btn-dark hist-type-btn active" data-type="bar" onclick="switchHistChart('bar',this)"><i class="bi bi-bar-chart-fill me-1"></i>Bar</button>
+                <button type="button" class="btn btn-sm btn-outline-dark hist-type-btn" data-type="line" onclick="switchHistChart('line',this)"><i class="bi bi-graph-up me-1"></i>Line</button>
+                <button type="button" class="btn btn-sm btn-outline-dark hist-type-btn" data-type="area" onclick="switchHistChart('area',this)"><i class="bi bi-activity me-1"></i>Area</button>
+                <button type="button" class="btn btn-sm btn-outline-dark hist-type-btn" data-type="doughnut" onclick="switchHistChart('doughnut',this)"><i class="bi bi-pie-chart-fill me-1"></i>Doughnut</button>
+                <button type="button" class="btn btn-sm btn-outline-dark hist-type-btn" data-type="radar" onclick="switchHistChart('radar',this)"><i class="bi bi-broadcast me-1"></i>Radar</button>
+            </div>
+        </div>
+
+        {# Range + granularity controls #}
+        <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+            {# Quick ranges #}
+            <div class="btn-group btn-group-sm" role="group">
+                <button class="btn btn-outline-secondary hist-range-btn" data-range="today"     onclick="applyHistRange('today',this)">Today</button>
+                <button class="btn btn-outline-secondary hist-range-btn" data-range="yesterday" onclick="applyHistRange('yesterday',this)">Yesterday</button>
+                <button class="btn btn-outline-secondary hist-range-btn" data-range="7d"        onclick="applyHistRange('7d',this)">7 Days</button>
+                <button class="btn btn-outline-secondary hist-range-btn" data-range="30d"       onclick="applyHistRange('30d',this)">30 Days</button>
+                <button class="btn btn-outline-secondary hist-range-btn" data-range="month"     onclick="applyHistRange('month',this)">This Month</button>
+                <button class="btn btn-outline-secondary hist-range-btn" data-range="year"      onclick="applyHistRange('year',this)">This Year</button>
+                <button class="btn btn-secondary hist-range-btn active"  data-range="all"       onclick="applyHistRange('all',this)">All Time</button>
+                <button class="btn btn-outline-secondary hist-range-btn" data-range="custom"    onclick="applyHistRange('custom',this)">Custom</button>
+            </div>
+            {# Granularity #}
+            <div class="btn-group btn-group-sm" role="group">
+                <button class="btn btn-outline-dark hist-gran-btn" data-gran="daily"   onclick="switchHistGran('daily',this)">Daily</button>
+                <button class="btn btn-dark hist-gran-btn active"  data-gran="monthly" onclick="switchHistGran('monthly',this)">Monthly</button>
+                <button class="btn btn-outline-dark hist-gran-btn" data-gran="yearly"  onclick="switchHistGran('yearly',this)">Yearly</button>
+            </div>
+        </div>
+
+        {# Custom date range — hidden until "Custom" clicked #}
+        <div id="histCustomRangeRow" class="d-none mb-3">
+            <div class="d-flex gap-2 align-items-center flex-wrap">
+                <label class="text-muted small mb-0">From</label>
+                <input type="date" id="histCustomFrom" class="form-control form-control-sm" style="width:160px;">
+                <label class="text-muted small mb-0">To</label>
+                <input type="date" id="histCustomTo"   class="form-control form-control-sm" style="width:160px;">
+                <button class="btn btn-sm btn-dark" onclick="applyHistCustomRange()">Apply</button>
+            </div>
+        </div>
+
+        <div style="position:relative; height:300px;">
+            <canvas id="historyChart"></canvas>
+        </div>
+        <p class="text-muted small mt-2 mb-0" id="histRangeLabel"></p>
+    </div>
+</div>
+{% endif %}
+
+{# ── Listings section ────────────────────────────────────────── #}
+{% if listings %}
+
+{# Product Code Reference #}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body">
+        <h5 class="card-title mb-3">
+            <i class="bi bi-tag me-2 text-secondary"></i>Product Codes
+        </h5>
+        <div class="table-responsive" style="max-width:340px;">
+            <table class="table table-sm table-bordered align-middle mb-0" style="font-size:0.9rem;">
+                <thead>
+                    <tr style="background:#1a1a1a; color:#fff;">
+                        <th class="text-center py-2" style="width:70px; letter-spacing:.05em;">CODE</th>
+                        <th class="py-2" style="letter-spacing:.05em;">ITEM</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% set product_codes = [
+                        ('SC',  'SCARF SC'),
+                        ('CW',  'COWL CW'),
+                        ('TW',  'TOWEL'),
+                        ('BK',  'BLANKET / BABY'),
+                        ('LP',  'LAPROBE'),
+                        ('WS',  'WRAP / SHAWL'),
+                        ('HT',  'HAT'),
+                        ('PL',  'PILLOW'),
+                        ('NK',  'NAPKINS'),
+                        ('PM',  'PLACEMATS'),
+                        ('BG',  'BAGS'),
+                        ('MT',  'MATS'),
+                    ] %}
+                    {% for code, item in product_codes %}
+                    <tr>
+                        <td class="text-center fw-bold" style="color:#c0392b; letter-spacing:.05em;">{{ code }}</td>
+                        <td class="fw-semibold" style="letter-spacing:.04em;">{{ item }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% else %}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body text-center py-5">
+        <i class="bi bi-inbox text-muted" style="font-size: 3rem;"></i>
+        <h4 class="mt-3 text-muted">No listings found</h4>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+// ── History chart (Revenue / Views toggle) ────────────────────
+{% if monthly_labels or views_labels %}
+// Raw daily revenue data
+const DAILY_LABELS = {{ daily_labels | tojson }};
+const DAILY_VALUES = {{ daily_values | tojson }};
+// Raw daily views data
+const VIEWS_LABELS = {{ views_labels | tojson }};
+const VIEWS_VALUES = {{ views_values | tojson }};
+
+let histChart     = null;
+let currentTab    = 'revenue';
+let currentHistType = 'bar';
+let currentHistGran = 'monthly';
+let currentHistFrom = null;
+let currentHistTo   = null;
+
+function todayStr()     { return new Date().toISOString().slice(0,10); }
+function offsetDay(n)   {
+    const d = new Date(); d.setDate(d.getDate() + n);
+    return d.toISOString().slice(0,10);
+}
+function firstOfMonth() {
+    const d = new Date(); d.setDate(1);
+    return d.toISOString().slice(0,10);
+}
+function firstOfYear()  {
+    const d = new Date(); d.setMonth(0,1);
+    return d.toISOString().slice(0,10);
+}
+
+function getActiveData() {
+    return currentTab === 'revenue'
+        ? { labels: DAILY_LABELS, values: DAILY_VALUES }
+        : { labels: VIEWS_LABELS, values: VIEWS_VALUES };
+}
+
+function getFilteredHistData() {
+    const from = currentHistFrom;
+    const to   = currentHistTo || todayStr();
+    const { labels: rawLabels, values: rawValues } = getActiveData();
+
+    const filtered = rawLabels.reduce((acc, lbl, i) => {
+        if ((!from || lbl >= from) && lbl <= to) {
+            acc.push({ lbl, val: rawValues[i] });
+        }
+        return acc;
+    }, []);
+
+    if (currentHistGran === 'daily') {
+        return { labels: filtered.map(r => r.lbl), values: filtered.map(r => r.val) };
+    }
+
+    const buckets = {};
+    filtered.forEach(({ lbl, val }) => {
+        const key = currentHistGran === 'yearly' ? lbl.slice(0,4) : lbl.slice(0,7);
+        buckets[key] = (buckets[key] || 0) + val;
+    });
+    const keys = Object.keys(buckets).sort();
+    return { labels: keys, values: keys.map(k => Math.round(buckets[k] * 100) / 100) };
+}
+
+function updateHistRangeLabel() {
+    const el = document.getElementById('histRangeLabel');
+    if (!el) return;
+    const from = currentHistFrom, to = currentHistTo || todayStr();
+    const label = currentTab === 'revenue' ? 'revenue' : 'views';
+    if (!from) { el.textContent = `Showing all-time ${label}.`; }
+    else        { el.textContent = `Showing ${label} from ${from} → ${to}`; }
+}
+
+function applyHistRange(range, btn) {
+    document.getElementById('histCustomRangeRow').classList.add('d-none');
+    document.querySelectorAll('.hist-range-btn').forEach(b => {
+        b.classList.remove('btn-secondary','active');
+        b.classList.add('btn-outline-secondary');
+    });
+    btn.classList.remove('btn-outline-secondary');
+    btn.classList.add('btn-secondary','active');
+
+    const today = todayStr();
+    if (range === 'today')       { currentHistFrom = today;           currentHistTo = today; }
+    else if (range === 'yesterday') { const y = offsetDay(-1); currentHistFrom = y; currentHistTo = y; }
+    else if (range === '7d')     { currentHistFrom = offsetDay(-6);   currentHistTo = today; }
+    else if (range === '30d')    { currentHistFrom = offsetDay(-29);  currentHistTo = today; }
+    else if (range === 'month')  { currentHistFrom = firstOfMonth();  currentHistTo = today; }
+    else if (range === 'year')   { currentHistFrom = firstOfYear();   currentHistTo = today; }
+    else if (range === 'all')    { currentHistFrom = null;            currentHistTo = null; }
+    else if (range === 'custom') {
+        document.getElementById('histCustomRangeRow').classList.remove('d-none');
+        if (currentHistFrom) document.getElementById('histCustomFrom').value = currentHistFrom;
+        if (currentHistTo)   document.getElementById('histCustomTo').value   = currentHistTo;
+        return;
+    }
+
+    if (['today','yesterday','7d'].includes(range)) setHistGran('daily');
+    else if (['30d','month'].includes(range))        setHistGran('daily');
+    else if (range === 'year')                       setHistGran('monthly');
+    else if (range === 'all')                        setHistGran('monthly');
+    updateHistRangeLabel();
+    rebuildHistChart();
+}
+
+function applyHistCustomRange() {
+    const from = document.getElementById('histCustomFrom').value;
+    const to   = document.getElementById('histCustomTo').value;
+    if (!from || !to || from > to) { alert('Please pick a valid date range.'); return; }
+    currentHistFrom = from;
+    currentHistTo   = to;
+    const days = (new Date(to) - new Date(from)) / 86400000;
+    if (days <= 31)       setHistGran('daily');
+    else if (days <= 730) setHistGran('monthly');
+    else                  setHistGran('yearly');
+    updateHistRangeLabel();
+    rebuildHistChart();
+}
+
+function setHistGran(gran) {
+    currentHistGran = gran;
+    document.querySelectorAll('.hist-gran-btn').forEach(b => {
+        const active = b.dataset.gran === gran;
+        b.classList.toggle('btn-dark', active);
+        b.classList.toggle('btn-outline-dark', !active);
+        b.classList.toggle('active', active);
+    });
+}
+
+function switchHistGran(gran, btn) {
+    setHistGran(gran);
+    updateHistRangeLabel();
+    rebuildHistChart();
+}
+
+function switchHistChart(type, btn) {
+    currentHistType = type;
+    document.querySelectorAll('.hist-type-btn').forEach(b => {
+        b.classList.remove('btn-dark'); b.classList.add('btn-outline-dark');
+    });
+    btn.classList.remove('btn-outline-dark'); btn.classList.add('btn-dark');
+    rebuildHistChart();
+}
+
+function switchChartTab(tab, btn) {
+    currentTab = tab;
+    document.querySelectorAll('.chart-tab-btn').forEach(b => {
+        b.classList.remove('btn-dark'); b.classList.add('btn-outline-dark');
+    });
+    btn.classList.remove('btn-outline-dark'); btn.classList.add('btn-dark');
+    updateHistRangeLabel();
+    rebuildHistChart();
+}
+
+function buildHistConfig(type, labels, values) {
+    const isRevenue = currentTab === 'revenue';
+    const colors = labels.map((_, i) => `hsl(${[22,200,140,280,330,50,190,0,90,250][i%10]},72%,52%)`);
+    const fmt = isRevenue
+        ? { callbacks: { label: c => '$' + Number(c.parsed.y ?? c.parsed ?? 0).toFixed(2) } }
+        : {};
+    const yTick = isRevenue ? v => '$' + v : v => v;
+    const dsLabel = isRevenue ? 'Revenue' : 'Views';
+    const accent = isRevenue ? '#f56400' : '#2563eb';
+
+    if (type === 'bar') return {
+        type: 'bar',
+        data: { labels, datasets: [{ label: dsLabel, data: values,
+            backgroundColor: accent, borderRadius: 6, maxBarThickness: 64 }] },
+        options: { responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false }, tooltip: fmt },
+            scales: { x: { grid: { display: false }, ticks: { color: '#6c757d' } },
+                      y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' },
+                           ticks: { color: '#6c757d', callback: yTick } } } }
+    };
+    if (type === 'line') return {
+        type: 'line',
+        data: { labels, datasets: [{ label: dsLabel, data: values,
+            borderColor: accent, backgroundColor: 'transparent',
+            tension: 0.35, pointRadius: 4, pointHoverRadius: 6,
+            pointBackgroundColor: accent, borderWidth: 2.5 }] },
+        options: { responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false }, tooltip: fmt },
+            scales: { x: { grid: { display: false }, ticks: { color: '#6c757d' } },
+                      y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' },
+                           ticks: { color: '#6c757d', callback: yTick } } } }
+    };
+    if (type === 'area') return {
+        type: 'line',
+        data: { labels, datasets: [{ label: dsLabel, data: values,
+            borderColor: accent, backgroundColor: (isRevenue ? 'rgba(245,100,0,0.18)' : 'rgba(37,99,235,0.18)'),
+            fill: true, tension: 0.35, pointRadius: 4, pointHoverRadius: 6,
+            pointBackgroundColor: accent, borderWidth: 2.5 }] },
+        options: { responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false }, tooltip: fmt },
+            scales: { x: { grid: { display: false }, ticks: { color: '#6c757d' } },
+                      y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' },
+                           ticks: { color: '#6c757d', callback: yTick } } } }
+    };
+    if (type === 'doughnut') return {
+        type: 'doughnut',
+        data: { labels, datasets: [{ label: dsLabel, data: values,
+            backgroundColor: colors, borderWidth: 2, borderColor: '#fff', hoverOffset: 10 }] },
+        options: { responsive: true, maintainAspectRatio: false, cutout: '60%',
+            plugins: { legend: { position: 'right', labels: { boxWidth: 12, padding: 14, color: '#6c757d' } },
+                       tooltip: isRevenue
+                           ? { callbacks: { label: c => c.label + ': $' + Number(c.parsed).toFixed(2) } }
+                           : {} } }
+    };
+    if (type === 'radar') return {
+        type: 'radar',
+        data: { labels, datasets: [{ label: dsLabel, data: values,
+            borderColor: accent, backgroundColor: (isRevenue ? 'rgba(245,100,0,0.15)' : 'rgba(37,99,235,0.15)'),
+            pointBackgroundColor: accent, pointRadius: 4, borderWidth: 2 }] },
+        options: { responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false }, tooltip: fmt },
+            scales: { r: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.07)' },
+                ticks: { color: '#6c757d', backdropColor: 'transparent', callback: yTick },
+                pointLabels: { color: '#495057', font: { size: 11 } } } } }
+    };
+}
+
+function rebuildHistChart() {
+    if (histChart) { histChart.destroy(); histChart = null; }
+    const ctx = document.getElementById('historyChart');
+    if (!ctx) return;
+    const { labels, values } = getFilteredHistData();
+    histChart = new Chart(ctx, buildHistConfig(currentHistType, labels, values));
+}
+
+// Initial render
+(function () { updateHistRangeLabel(); rebuildHistChart(); })();
+{% endif %}
+
+// ── Listing selection + comparison charts ──────────────────────
+const PALETTE = [
+    '#f56400','#2563eb','#16a34a','#9333ea','#db2777',
+    '#ca8a04','#0891b2','#dc2626','#65a30d','#7c3aed'
+];
+
+
+</script>
+{% endblock %}
