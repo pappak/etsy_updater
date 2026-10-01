@@ -57,6 +57,7 @@
                         <th style="width: 40px;">
                             <input type="checkbox" id="master-check">
                         </th>
+                        <th style="width: 72px;">Image</th>
                         <th>Listing</th>
                         <th>State</th>
                         <th>Price</th>
@@ -75,6 +76,21 @@
                     <tr>
                         <td>
                             <input type="checkbox" name="listing_ids" value="{{ lid }}" class="listing-check">
+                        </td>
+                        <td>
+                            {% set images = listing_data.get('images', []) %}
+                            {% set img_url = images[0].get('url_570xN', images[0].get('url_fullxfull', '')) if images else '' %}
+                            <a href="/listing/{{ lid }}" title="{{ title }}">
+                                {% if img_url %}
+                                <img src="{{ img_url }}" alt="" class="rounded border"
+                                     style="width: 56px; height: 56px; object-fit: cover;">
+                                {% else %}
+                                <span class="d-inline-flex align-items-center justify-content-center rounded border bg-light text-muted"
+                                      style="width: 56px; height: 56px;">
+                                    <i class="bi bi-image" style="font-size: 1.5rem;"></i>
+                                </span>
+                                {% endif %}
+                            </a>
                         </td>
                         <td>
                             <a href="/listing/{{ lid }}" class="text-decoration-none">{{ title[:60] }}{% if title|length > 60 %}...{% endif %}</a>
