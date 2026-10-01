@@ -13,7 +13,7 @@
 
         {% if authenticated %}
         <div class="row g-4 justify-content-center mb-4">
-            <div class="col-md-4">
+            <div class="col-6 col-lg-3">
                 <div class="card border-0 shadow-sm h-100">
                     <div class="card-body text-center py-4">
                         <i class="bi bi-grid-3x3-gap fs-1 mb-3 d-block" style="color: #f56400;"></i>
@@ -23,13 +23,33 @@
                     </div>
                 </div>
             </div>
-            <div class="col-md-4">
+            <div class="col-6 col-lg-3">
                 <div class="card border-0 shadow-sm h-100">
                     <div class="card-body text-center py-4">
                         <i class="bi bi-pencil-square fs-1 mb-3 d-block" style="color: #f56400;"></i>
                         <h5>Bulk Update</h5>
                         <p class="text-muted small">Mass-edit pricing, quantity, tags, and more</p>
                         <a href="/bulk-update" class="btn btn-dark">Bulk Update</a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-lg-3">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body text-center py-4">
+                        <i class="bi bi-upc-scan fs-1 mb-3 d-block" style="color: #f56400;"></i>
+                        <h5>SKU Generator</h5>
+                        <p class="text-muted small">Build SKUs and print product labels</p>
+                        <a href="/sku-generator" class="btn btn-dark">Open Generator</a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-lg-3">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body text-center py-4">
+                        <i class="bi bi-graph-up-arrow fs-1 mb-3 d-block" style="color: #f56400;"></i>
+                        <h5>Sale Tracker</h5>
+                        <p class="text-muted small">Sales, fees and payout history</p>
+                        <a href="/sale-tracker" class="btn btn-dark">Open Tracker</a>
                     </div>
                 </div>
             </div>
