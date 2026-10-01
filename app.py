@@ -330,7 +330,9 @@ def dashboard():
 
     if not shop_id:
         flash("No shop found. Make sure you have an Etsy shop.", "warning")
-        return render_template("dashboard.html", shop_name=None, listings=[])
+        return render_template(
+            "dashboard.html", shop_name=None, listings=[], counts={}, counted_total=0
+        )
 
     try:
         # Fetch all listings (paginated)
@@ -346,15 +348,29 @@ def dashboard():
             offset += 100
 
         save_client_tokens(client)
+        counts = _read_counts()
+        counted_total = sum(
+            1
+            for lid in (entry.get("listing_id") for entry in all_listings)
+            if f"etsy:{lid}" in counts
+        )
         return render_template(
             "dashboard.html",
             shop_name=session.get("shop_name", f"Shop #{shop_id}"),
             listings=all_listings,
             total=len(all_listings),
+            counts=counts,
+            counted_total=counted_total,
         )
     except Exception as e:
         flash(f"Error fetching listings: {e}", "danger")
-        return render_template("dashboard.html", shop_name=session.get("shop_name"), listings=[])
+        return render_template(
+            "dashboard.html",
+            shop_name=session.get("shop_name"),
+            listings=[],
+            counts={},
+            counted_total=0,
+        )
 
 
 @app.route("/listing/<int:listing_id>")
@@ -931,6 +947,91 @@ def api_sku_history_import():
             app.logger.exception("Unable to merge shared SKU history")
             return jsonify({"error": "Could not save SKU history"}), 500
     return jsonify({"added": added, "total": len(history)})
+
+
+# ─── Inventory count marks ───
+# One JSON file holds every "counted" tick, shared with the Sale Tracker, so
+# the Etsy dashboard and the tracker's inventory page always agree — and
+# either app still works when the other isn't running.
+
+INVENTORY_COUNTS_FILE = Path(
+    os.getenv(
+        "INVENTORY_COUNTS_FILE",
+        Path(__file__).resolve().parent.parent / "SKU Code Generator" / "texstyls-inventory-counts.json",
+    )
+)
+INVENTORY_COUNTS_LOCK = threading.Lock()
+
+
+def _read_counts():
+    """Return {key: counted_at} from the shared counts file."""
+    try:
+        data = json.loads(INVENTORY_COUNTS_FILE.read_text(encoding="utf-8"))
+        counts = data.get("counts", {})
+        return counts if isinstance(counts, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _write_counts(counts):
+    """Atomically persist the counts map. Call inside INVENTORY_COUNTS_LOCK."""
+    INVENTORY_COUNTS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "updated_at": datetime.now().isoformat(timespec="seconds"),
+        "counts": counts,
+    }
+    fd, temp_name = tempfile.mkstemp(
+        prefix=".counts-", suffix=".tmp", dir=INVENTORY_COUNTS_FILE.parent
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as temp_file:
+            json.dump(payload, temp_file, ensure_ascii=False, indent=2)
+            temp_file.flush()
+            os.fsync(temp_file.fileno())
+        os.replace(temp_name, INVENTORY_COUNTS_FILE)
+    finally:
+        if os.path.exists(temp_name):
+            os.unlink(temp_name)
+
+
+@app.route("/api/inventory-counts", methods=["GET", "POST"])
+@login_required
+def api_inventory_counts():
+    """Read or update the shared counted marks (etsy:<listing_id>, item:<id>)."""
+    if request.method == "GET":
+        return jsonify(_read_counts())
+
+    body = request.get_json(silent=True) or {}
+    key = str(body.get("key", "")).strip()
+    if not key:
+        return jsonify({"error": "Missing key"}), 400
+    counted = bool(body.get("counted"))
+
+    with INVENTORY_COUNTS_LOCK:
+        counts = _read_counts()
+        if counted:
+            counts[key] = datetime.now().isoformat(timespec="seconds")
+        else:
+            counts.pop(key, None)
+        try:
+            _write_counts(counts)
+        except OSError:
+            app.logger.exception("Unable to save inventory counts")
+            return jsonify({"error": "Could not save counts"}), 500
+    return jsonify(counts)
+
+
+@app.route("/api/inventory-counts/reset", methods=["POST"])
+@login_required
+def api_inventory_counts_reset():
+    """Clear every counted mark for a new inventory count."""
+    with INVENTORY_COUNTS_LOCK:
+        try:
+            _write_counts({})
+        except OSError:
+            app.logger.exception("Unable to reset inventory counts")
+            return jsonify({"error": "Could not reset counts"}), 500
+    return jsonify({"counts": {}, "reset": True})
 
 
 @app.route("/bulk-update", methods=["GET", "POST"])

@@ -4,9 +4,16 @@
 <div class="d-flex justify-content-between align-items-center mt-4 mb-3">
     <div>
         <h2 class="mb-1"><i class="bi bi-shop me-2"></i>Etsy listings</h2>
-        <p class="text-muted mb-0">{{ total }} listing{% if total != 1 %}s{% endif %}</p>
+        <p class="text-muted mb-0">
+            {{ total }} listing{% if total != 1 %}s{% endif %}
+            · <span id="counted-summary" class="fw-semibold text-success">{{ counted_total }} counted</span>
+            · <span id="uncounted-summary">{{ total - counted_total }} not counted</span>
+        </p>
     </div>
-    <div>
+    <div class="d-flex gap-2 align-items-center">
+        <button type="button" class="btn btn-outline-secondary btn-sm" id="reset-counts">
+            <i class="bi bi-arrow-counterclockwise"></i> Reset counts
+        </button>
         <a href="/bulk-update" class="btn btn-dark">
             <i class="bi bi-pencil-square me-1"></i> Bulk Update
         </a>
@@ -24,6 +31,7 @@
     {% set price_amount = price.get('amount', 0) / price.get('divisor', 1) if price else 0 %}
     {% set price_currency = price.get('currency_code', 'USD') if price else 'USD' %}
     {% set quantity = listing_data.get('quantity', 0) %}
+    {% set counted = counts.get('etsy:' ~ listing_id) %}
     {% set views = listing_data.get('views', 0) %}
     {% set image = listing_data.get('images', []) %}
     {% set img_url = image[0].get('url_570xN', '') if image else '' %}
@@ -43,6 +51,18 @@
             </div>
             <div class="card-body d-flex flex-column">
                 <h6 class="card-title text-truncate" title="{{ title }}">{{ title }}</h6>
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <div class="form-check mb-0">
+                        <input class="form-check-input count-check" type="checkbox"
+                               value="{{ listing_id }}" id="count-{{ listing_id }}"
+                               {% if counted %}checked{% endif %}>
+                        <label class="form-check-label small text-muted" for="count-{{ listing_id }}">Counted</label>
+                    </div>
+                    <div class="count-pills d-flex gap-1">
+                        {% if counted %}<span class="badge bg-success counted-pill">Counted</span>{% endif %}
+                        {% if quantity|int <= 0 %}<span class="badge bg-danger">Out of stock</span>{% endif %}
+                    </div>
+                </div>
                 <div class="d-flex justify-content-between align-items-center mt-auto">
                     <div>
                         <strong class="fs-5">${{ "%.2f"|format(price_amount) }}</strong>
@@ -66,4 +86,59 @@
     <p class="text-muted">Your shop doesn't have any listings yet, or there was an error fetching them.</p>
 </div>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+function refreshCountSummary() {
+    const boxes = document.querySelectorAll('.count-check');
+    const checked = document.querySelectorAll('.count-check:checked').length;
+    const summary = document.getElementById('counted-summary');
+    const uncounted = document.getElementById('uncounted-summary');
+    if (summary) summary.textContent = `${checked} counted`;
+    if (uncounted) uncounted.textContent = `${boxes.length - checked} not counted`;
+}
+
+document.querySelectorAll('.count-check').forEach(box => {
+    box.addEventListener('change', async () => {
+        const id = box.value;
+        const counted = box.checked;
+        const pills = box.closest('.card-body').querySelector('.count-pills');
+        try {
+            const resp = await fetch('/api/inventory-counts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ key: `etsy:${id}`, counted })
+            });
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const existing = pills.querySelector('.counted-pill');
+            if (counted && !existing) {
+                const pill = document.createElement('span');
+                pill.className = 'badge bg-success counted-pill';
+                pill.textContent = 'Counted';
+                pills.prepend(pill);
+            } else if (!counted && existing) {
+                existing.remove();
+            }
+            refreshCountSummary();
+        } catch (err) {
+            box.checked = !counted;
+            alert(`Could not save the counted mark: ${err.message}`);
+        }
+    });
+});
+
+document.getElementById('reset-counts')?.addEventListener('click', async () => {
+    if (!confirm('Clear every counted mark?')) return;
+    try {
+        const resp = await fetch('/api/inventory-counts/reset', { method: 'POST' });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        document.querySelectorAll('.count-check').forEach(box => { box.checked = false; });
+        document.querySelectorAll('.counted-pill').forEach(pill => pill.remove());
+        refreshCountSummary();
+    } catch (err) {
+        alert(`Could not reset counts: ${err.message}`);
+    }
+});
+</script>
 {% endblock %}
