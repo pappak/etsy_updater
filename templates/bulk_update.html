@@ -80,7 +80,9 @@
                         <td>
                             {% set images = listing_data.get('images', []) %}
                             {% set img_url = images[0].get('url_570xN', images[0].get('url_fullxfull', '')) if images else '' %}
-                            <a href="/listing/{{ lid }}" title="{{ title }}">
+                            {% set preview_full = images[0].get('url_fullxfull', img_url) if images else '' %}
+                            <a href="/listing/{{ lid }}" title="{{ title }}" class="thumb-link"
+                               {% if img_url %}data-preview="{{ img_url }}" data-preview-full="{{ preview_full }}"{% endif %}>
                                 {% if img_url %}
                                 <img src="{{ img_url }}" alt="" class="rounded border"
                                      style="width: 56px; height: 56px; object-fit: cover;">
@@ -159,5 +161,74 @@ document.getElementById('bulk-form')?.addEventListener('submit', function(e) {
         e.preventDefault();
     }
 });
+
+// Hover preview: float a large copy of the photo beside the thumbnail.
+const thumbPreview = document.createElement('img');
+thumbPreview.alt = '';
+thumbPreview.id = 'thumb-preview';
+Object.assign(thumbPreview.style, {
+    position: 'fixed',
+    width: 'min(440px, 55vw)',
+    height: 'auto',
+    borderRadius: '8px',
+    border: '3px solid #fff',
+    boxShadow: '0 12px 32px rgba(0, 0, 0, 0.45)',
+    background: '#fff',
+    zIndex: '2000',
+    pointerEvents: 'none',
+    display: 'none',
+    opacity: '0',
+    transition: 'opacity 0.12s ease',
+});
+document.body.appendChild(thumbPreview);
+
+let hoveredLink = null;
+
+function placePreview(link) {
+    const rect = link.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const pw = thumbPreview.offsetWidth || 440;
+    const ph = thumbPreview.offsetHeight || pw;
+    let left = rect.right + 14;
+    if (left + pw > vw - 8) left = Math.max(8, rect.left - pw - 14);
+    let top = rect.top + rect.height / 2 - ph / 2;
+    top = Math.min(Math.max(8, top), Math.max(8, vh - ph - 8));
+    thumbPreview.style.left = `${left}px`;
+    thumbPreview.style.top = `${top}px`;
+}
+
+function hidePreview() {
+    hoveredLink = null;
+    thumbPreview.style.opacity = '0';
+}
+
+thumbPreview.addEventListener('load', () => {
+    if (hoveredLink) placePreview(hoveredLink);
+});
+
+document.querySelectorAll('.thumb-link[data-preview]').forEach(link => {
+    link.addEventListener('mouseenter', () => {
+        hoveredLink = link;
+        const small = link.dataset.preview;
+        const full = link.dataset.previewFull || small;
+        thumbPreview.style.display = 'block';
+        // Show the cached 570px copy immediately, then swap in the full-size
+        // photo when it finishes loading in the background.
+        if (thumbPreview.getAttribute('src') !== small) thumbPreview.src = small;
+        placePreview(link);
+        thumbPreview.style.opacity = '1';
+        const hi = new Image();
+        hi.onload = () => {
+            if (hoveredLink === link && thumbPreview.getAttribute('src') !== full) {
+                thumbPreview.src = full;
+            }
+        };
+        hi.src = full;
+    });
+    link.addEventListener('mouseleave', hidePreview);
+});
+
+window.addEventListener('scroll', hidePreview, true);
 </script>
 {% endblock %}
