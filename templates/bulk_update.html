@@ -44,7 +44,13 @@
             <span class="text-muted">
                 <span id="selected-count">0</span> of {{ listings|length }} selected
             </span>
-            <div>
+            <div class="d-flex align-items-center gap-2">
+                {% if deactivated %}
+                <label class="form-check me-2 text-muted small mb-0">
+                    <input class="form-check-input" type="checkbox" id="show-deactivated">
+                    <span class="form-check-label">Show deactivated ({{ deactivated|length }})</span>
+                </label>
+                {% endif %}
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="select-all">Select All</button>
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="deselect-all">Deselect All</button>
             </div>
@@ -63,6 +69,7 @@
                         <th>Price</th>
                         <th>Qty</th>
                         <th>Action</th>
+                        <th>Counted</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -71,6 +78,7 @@
                     {% set lid = listing_data.get('listing_id', listing.get('id')) %}
                     {% set title = listing_data.get('title', 'Untitled') %}
                     {% set state = listing_data.get('state', 'unknown') %}
+                    {% set counted = counts.get('etsy:' ~ lid) %}
                     {% set p = listing_data.get('price', {}) %}
                     {% set p_amount = p.get('amount', 0) / p.get('divisor', 1) if p else 0 %}
                     <tr>
@@ -105,9 +113,64 @@
                                 <i class="bi bi-pencil"></i>
                             </a>
                         </td>
+                        <td>
+                            <button type="button"
+                                    class="btn btn-sm rounded-pill count-toggle {% if counted %}btn-success{% else %}btn-outline-secondary{% endif %}"
+                                    data-lid="{{ lid }}">
+                                <i class="bi bi-{% if counted %}check-circle-fill{% else %}circle{% endif %} me-1"></i>{% if counted %}Counted{% else %}Not counted{% endif %}
+                            </button>
+                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>
+                {% if deactivated %}
+                <tbody id="deactivated-rows" class="d-none">
+                    {% for listing in deactivated %}
+                    {% set listing_data = listing.get('listing', listing) %}
+                    {% set lid = listing_data.get('listing_id', listing.get('id')) %}
+                    {% set title = listing_data.get('title', 'Untitled') %}
+                    {% set counted = counts.get('etsy:' ~ lid) %}
+                    {% set p = listing_data.get('price', {}) %}
+                    {% set p_amount = p.get('amount', 0) / p.get('divisor', 1) if p else 0 %}
+                    <tr class="table-light">
+                        <td></td>
+                        <td>
+                            {% set images = listing_data.get('images', []) %}
+                            {% set img_url = images[0].get('url_570xN', images[0].get('url_fullxfull', '')) if images else '' %}
+                            {% if img_url %}
+                            <a href="/listing/{{ lid }}" title="{{ title }}" class="thumb-link"
+                               data-preview="{{ img_url }}" data-preview-full="{{ images[0].get('url_fullxfull', img_url) }}">
+                                <img src="{{ img_url }}" alt="" class="rounded border"
+                                     style="width: 56px; height: 56px; object-fit: cover; opacity: .55;">
+                            </a>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <a href="/listing/{{ lid }}" class="text-decoration-none text-muted">{{ title[:60] }}{% if title|length > 60 %}...{% endif %}</a>
+                        </td>
+                        <td><span class="badge bg-secondary">inactive</span></td>
+                        <td>${{ "%.2f"|format(p_amount) }}</td>
+                        <td>{{ listing_data.get('quantity', 0) }}</td>
+                        <td>
+                            <button type="button" class="btn btn-sm btn-outline-success reactivate-btn"
+                                    data-url="/listing/{{ lid }}/reactivate">
+                                <i class="bi bi-arrow-repeat me-1"></i>Reactivate
+                            </button>
+                            <a href="/listing/{{ lid }}" class="btn btn-sm btn-outline-dark ms-1">
+                                <i class="bi bi-pencil"></i>
+                            </a>
+                        </td>
+                        <td>
+                            <button type="button"
+                                    class="btn btn-sm rounded-pill count-toggle {% if counted %}btn-success{% else %}btn-outline-secondary{% endif %}"
+                                    data-lid="{{ lid }}">
+                                <i class="bi bi-{% if counted %}check-circle-fill{% else %}circle{% endif %} me-1"></i>{% if counted %}Counted{% else %}Not counted{% endif %}
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                {% endif %}
             </table>
         </div>
     </form>
@@ -160,6 +223,49 @@ document.getElementById('bulk-form')?.addEventListener('submit', function(e) {
     if (!confirm(`Update ${count} listing(s)? This cannot be undone.`)) {
         e.preventDefault();
     }
+});
+
+// Counted pill — same shared marks as the dashboard and the tracker.
+document.querySelectorAll('.count-toggle').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        const counted = !btn.classList.contains('btn-success');
+        try {
+            const resp = await fetch('/api/inventory-counts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ key: `etsy:${btn.dataset.lid}`, counted })
+            });
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            btn.classList.toggle('btn-success', counted);
+            btn.classList.toggle('btn-outline-secondary', !counted);
+            btn.innerHTML = counted
+                ? '<i class="bi bi-check-circle-fill me-1"></i>Counted'
+                : '<i class="bi bi-circle me-1"></i>Not counted';
+        } catch (err) {
+            alert(`Could not save the counted mark: ${err.message}`);
+        }
+    });
+});
+
+// Reveal deactivated listings (hidden by default).
+document.getElementById('show-deactivated')?.addEventListener('change', function() {
+    document.getElementById('deactivated-rows')?.classList.toggle('d-none', !this.checked);
+});
+
+// Put a deactivated listing back on Etsy.
+document.querySelectorAll('.reactivate-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        if (!confirm('Put this listing back on Etsy?')) return;
+        btn.disabled = true;
+        try {
+            const resp = await fetch(btn.dataset.url, { method: 'POST', redirect: 'follow' });
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            location.reload();
+        } catch (err) {
+            btn.disabled = false;
+            alert(`Could not reactivate the listing: ${err.message}`);
+        }
+    });
 });
 
 // Hover preview: float a large copy of the photo beside the thumbnail.

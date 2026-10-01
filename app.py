@@ -1086,11 +1086,41 @@ def bulk_update():
     try:
         data = client.get_listings_by_shop(shop_id, limit=100, offset=0)
         listings = data.get("results", [])
+        # Deactivated listings drop out of the table on their own (Etsy only
+        # returns active ones by default) — fetch them separately so they can
+        # be revealed and put back later.
+        deactivated = []
+        try:
+            resp = client.get_listings_by_shop(shop_id, limit=100, offset=0, state="inactive")
+            deactivated = resp.get("results", [])
+        except Exception:
+            app.logger.warning("Could not fetch deactivated listings", exc_info=True)
         save_client_tokens(client)
-        return render_template("bulk_update.html", listings=listings)
+        return render_template(
+            "bulk_update.html",
+            listings=listings,
+            deactivated=deactivated,
+            counts=_read_counts(),
+        )
     except Exception as e:
         flash(f"Error fetching listings: {e}", "danger")
         return redirect(url_for("dashboard"))
+
+
+@app.route("/listing/<int:listing_id>/reactivate", methods=["POST"])
+@login_required
+def reactivate_listing(listing_id):
+    """Put a deactivated listing back on Etsy (state → active)."""
+    client = get_client()
+    if not client:
+        return redirect(url_for("index"))
+    try:
+        client.update_listing(listing_id, shop_id=session.get("shop_id"), state="active")
+        save_client_tokens(client)
+        flash("Listing is active again on Etsy.", "success")
+    except Exception as e:
+        flash(f"Could not reactivate listing: {e}", "danger")
+    return redirect(url_for("bulk_update"))
 
 
 if __name__ == "__main__":

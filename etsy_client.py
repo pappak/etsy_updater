@@ -173,12 +173,16 @@ class EtsyClient:
 
     # ---- Listings ----
 
-    def get_listings_by_shop(self, shop_id, limit=100, offset=0):
-        """Get all listings for a shop."""
-        return self._get(
-            f"/application/shops/{shop_id}/listings",
-            params={"limit": min(limit, 100), "offset": offset, "includes": "Images"},
-        )
+    def get_listings_by_shop(self, shop_id, limit=100, offset=0, state=None):
+        """Get listings for a shop.
+
+        state: leave as None for Etsy's default (active listings), or pass
+        'active' / 'inactive' / 'draft' to ask for that state explicitly.
+        """
+        params = {"limit": min(limit, 100), "offset": offset, "includes": "Images"}
+        if state:
+            params["state"] = state
+        return self._get(f"/application/shops/{shop_id}/listings", params=params)
 
     def get_listing(self, listing_id):
         """Get a single listing by ID."""
