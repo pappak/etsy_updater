@@ -45,6 +45,45 @@
         .navbar .badge {
             font-size: 0.78rem;
         }
+        /* Cross-app switcher — same strip on Etsy Manager, SKU Generator, Sale Tracker */
+        .app-switcher {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0.25rem;
+            background: #14171c;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            padding: 0.4rem 1rem;
+        }
+        .app-switcher .switcher-label {
+            color: rgba(255, 255, 255, 0.45);
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            margin-right: 0.6rem;
+        }
+        .app-switcher a,
+        .app-switcher .current {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            color: rgba(255, 255, 255, 0.85);
+            font-size: 0.88rem;
+            font-weight: 600;
+            padding: 0.22rem 0.75rem;
+            border-radius: 999px;
+            text-decoration: none;
+        }
+        .app-switcher a:hover,
+        .app-switcher a:focus {
+            color: #fff;
+            background-color: rgba(255, 255, 255, 0.12);
+        }
+        .app-switcher .current {
+            background-color: #f56400;
+            color: #fff;
+        }
         .flash-container {
             margin-top: 1rem;
         }
@@ -69,6 +108,12 @@
     </style>
 </head>
 <body>
+    <div class="app-switcher">
+        <span class="switcher-label">TexStyls</span>
+        <span class="current"><i class="bi bi-shop"></i> Etsy Manager</span>
+        <a href="/sku-generator"><i class="bi bi-upc-scan"></i> SKU Generator</a>
+        <a href="/sale-tracker"><i class="bi bi-graph-up-arrow"></i> Sale Tracker</a>
+    </div>
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container">
             <a class="navbar-brand" href="/">
@@ -94,22 +139,6 @@
                     <li class="nav-item">
                         <a class="nav-link" href="/bulk-update">
                             <i class="bi bi-pencil-square"></i> Bulk Update
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/sku-generator">
-                            <i class="bi bi-upc-scan"></i> SKU Generator
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/sale-tracker">
-                            <i class="bi bi-graph-up-arrow"></i> Sale Tracker
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ sale_tracker_url }}" target="_blank" rel="noopener"
-                           title="Open the Sale Tracker dev server in its own tab">
-                            <i class="bi bi-box-arrow-up-right"></i> Tracker &#8599;
                         </a>
                     </li>
                     {% endif %}
