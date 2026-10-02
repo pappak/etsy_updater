@@ -105,7 +105,7 @@
                         <td>
                             <a href="/listing/{{ lid }}" class="text-decoration-none">{{ title[:60] }}{% if title|length > 60 %}...{% endif %}</a>
                         </td>
-                        <td><span class="badge bg-{{ 'success' if state == 'active' else 'secondary' }}">{{ state }}</span></td>
+                        <td><span class="badge {% if state == 'active' %}bg-transparent text-secondary border{% else %}bg-secondary{% endif %}">{{ state }}</span></td>
                         <td>${{ "%.2f"|format(p_amount) }}</td>
                         <td>{{ listing_data.get('quantity', 0) }}</td>
                         <td>
@@ -115,7 +115,7 @@
                         </td>
                         <td>
                             <button type="button"
-                                    class="btn btn-sm rounded-pill count-toggle {% if counted %}btn-success{% else %}btn-outline-secondary{% endif %}"
+                                    class="btn btn-sm rounded-pill count-toggle {% if counted %}counted{% else %}btn-outline-secondary{% endif %}"
                                     data-lid="{{ lid }}">
                                 <i class="bi bi-{% if counted %}check-circle-fill{% else %}circle{% endif %} me-1"></i>{% if counted %}Counted{% else %}Not counted{% endif %}
                             </button>
@@ -162,7 +162,7 @@
                         </td>
                         <td>
                             <button type="button"
-                                    class="btn btn-sm rounded-pill count-toggle {% if counted %}btn-success{% else %}btn-outline-secondary{% endif %}"
+                                    class="btn btn-sm rounded-pill count-toggle {% if counted %}counted{% else %}btn-outline-secondary{% endif %}"
                                     data-lid="{{ lid }}">
                                 <i class="bi bi-{% if counted %}check-circle-fill{% else %}circle{% endif %} me-1"></i>{% if counted %}Counted{% else %}Not counted{% endif %}
                             </button>
@@ -228,7 +228,7 @@ document.getElementById('bulk-form')?.addEventListener('submit', function(e) {
 // Counted pill — same shared marks as the dashboard and the tracker.
 document.querySelectorAll('.count-toggle').forEach(btn => {
     btn.addEventListener('click', async () => {
-        const counted = !btn.classList.contains('btn-success');
+        const counted = !btn.classList.contains('counted');
         try {
             const resp = await fetch('/api/inventory-counts', {
                 method: 'POST',
@@ -236,7 +236,7 @@ document.querySelectorAll('.count-toggle').forEach(btn => {
                 body: JSON.stringify({ key: `etsy:${btn.dataset.lid}`, counted })
             });
             if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-            btn.classList.toggle('btn-success', counted);
+            btn.classList.toggle('counted', counted);
             btn.classList.toggle('btn-outline-secondary', !counted);
             btn.innerHTML = counted
                 ? '<i class="bi bi-check-circle-fill me-1"></i>Counted'
