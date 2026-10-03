@@ -687,7 +687,7 @@ def sku_generator(asset_path):
         )
         old_save = """    function saveToLocalStorage() {
       try {
-        localStorage.setItem('texstyls-generated-skus', JSON.stringify(skuHistory));
+        localStorage.setItem('texstyls-generated-skus-v2', JSON.stringify(skuHistory));
       } catch (err) {
         console.warn('Could not save to localStorage:', err);
       }
@@ -696,7 +696,7 @@ def sku_generator(asset_path):
     function saveToLocalStorage() {
       try {
         const data = JSON.stringify(skuHistory);
-        localStorage.setItem('texstyls-generated-skus', data);
+        localStorage.setItem('texstyls-generated-skus-v2', data);
         clearTimeout(sharedSaveTimer);
         sharedSaveTimer = setTimeout(() => {
           fetch('/api/sku-history', {
@@ -731,8 +731,8 @@ def sku_generator(asset_path):
             return "SKU Generator integration needs an update.", 500
         html = html[:sync_start] + "      showSyncStatus('active', 'Shared history synced with this app');\n      document.getElementById('syncBanner').classList.remove('show');\n\n" + html[sync_end:]
         html = html.replace(
-            "        localStorage.removeItem('texstyls-generated-skus');\n        updateHistoryDisplay();",
-            "        localStorage.removeItem('texstyls-generated-skus');\n        saveToLocalStorage();\n        updateHistoryDisplay();",
+            "          localStorage.removeItem('texstyls-generated-skus-v2');\n          localStorage.removeItem('texstyls-generated-skus');\n        } catch (err) {}\n        updateHistoryDisplay();",
+            "          localStorage.removeItem('texstyls-generated-skus-v2');\n          localStorage.removeItem('texstyls-generated-skus');\n        } catch (err) {}\n        saveToLocalStorage();\n        updateHistoryDisplay();",
             1,
         )
         response = make_response(html)
