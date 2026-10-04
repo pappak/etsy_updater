@@ -735,6 +735,27 @@ def sku_generator(asset_path):
             "          localStorage.removeItem('texstyls-generated-skus-v2');\n          localStorage.removeItem('texstyls-generated-skus');\n        } catch (err) {}\n        saveToLocalStorage();\n        updateHistoryDisplay();",
             1,
         )
+        old_remove = """    // Shared-history deletion — replaced by the Etsy app integration, which
+    // also removes the codes from the shared server history. No-op standalone.
+    function removeSharedHistoryEntries(codes) {
+      return Promise.resolve();
+    }"""
+        new_remove = """    function removeSharedHistoryEntries(codes) {
+      const all = !Array.isArray(codes) || codes.length === 0;
+      const requests = all
+        ? [fetch('/api/sku-history', { method: 'DELETE', credentials: 'same-origin' })]
+        : codes.map(code => fetch('/api/sku-history/' + encodeURIComponent(code), {
+            method: 'DELETE', credentials: 'same-origin'
+          }));
+      return Promise.all(requests).then(responses => {
+        if (responses.some(r => !r.ok)) throw new Error('Shared history delete failed');
+        showSyncStatus('active', 'Shared history synced');
+      }).catch(() => showSyncStatus('error', 'Shared history delete failed'));
+    }"""
+        if old_remove not in html:
+            app.logger.error("External SKU generator changed: shared history delete hook not found")
+            return "SKU Generator integration needs an update.", 500
+        html = html.replace(old_remove, new_remove, 1)
         response = make_response(html)
         response.headers["Content-Type"] = "text/html; charset=utf-8"
         response.headers["Cache-Control"] = "no-store"
@@ -867,6 +888,23 @@ def _merge_history_entries(existing, incoming):
     return [merged[key] for key in order], added, updated
 
 
+def _write_sku_history(history):
+    """Atomically replace the shared history file. Caller must hold SKU_HISTORY_LOCK."""
+    SKU_HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_name = tempfile.mkstemp(
+        prefix=".sku-history-", suffix=".tmp", dir=SKU_HISTORY_FILE.parent
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as temp_file:
+            json.dump(history, temp_file, ensure_ascii=False, indent=2)
+            temp_file.flush()
+            os.fsync(temp_file.fileno())
+        os.replace(temp_name, SKU_HISTORY_FILE)
+    finally:
+        if os.path.exists(temp_name):
+            os.unlink(temp_name)
+
+
 @app.route("/api/sku-history", methods=["GET", "PUT"])
 @login_required
 def api_sku_history():
@@ -883,24 +921,48 @@ def api_sku_history():
             # Merge instead of overwrite: a computer with a stale local copy
             # must not delete entries another computer has already saved.
             history, added, updated = _merge_history_entries(_read_sku_history(), data)
-            # Atomic replacement prevents interrupted requests from corrupting history.
-            SKU_HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
-            fd, temp_name = tempfile.mkstemp(
-                prefix=".sku-history-", suffix=".tmp", dir=SKU_HISTORY_FILE.parent
-            )
-            try:
-                with os.fdopen(fd, "w", encoding="utf-8") as temp_file:
-                    json.dump(history, temp_file, ensure_ascii=False, indent=2)
-                    temp_file.flush()
-                    os.fsync(temp_file.fileno())
-                os.replace(temp_name, SKU_HISTORY_FILE)
-            finally:
-                if os.path.exists(temp_name):
-                    os.unlink(temp_name)
+            _write_sku_history(history)
     except OSError:
         app.logger.exception("Unable to save shared SKU history")
         return jsonify({"error": "Could not save SKU history"}), 500
     return jsonify({"saved": len(history), "added": added, "updated": updated, "merged": True})
+
+
+@app.route("/api/sku-history", methods=["DELETE"])
+@login_required
+def api_sku_history_clear():
+    """Wipe the shared history — used by the generator's clear-all action."""
+    try:
+        with SKU_HISTORY_LOCK:
+            _write_sku_history([])
+    except OSError:
+        app.logger.exception("Unable to clear shared SKU history")
+        return jsonify({"error": "Could not clear SKU history"}), 500
+    return jsonify({"saved": 0})
+
+
+@app.route("/api/sku-history/<path:code>", methods=["DELETE"])
+@login_required
+def api_sku_history_delete(code):
+    """Remove one SKU code from the shared history (per-row trash button)."""
+    key = str(code).strip().upper()
+    if not key:
+        return jsonify({"error": "Missing SKU code"}), 400
+    with SKU_HISTORY_LOCK:
+        history = _read_sku_history()
+        kept = [
+            entry for entry in history
+            if isinstance(entry, dict)
+            and str(entry.get("code", "")).strip().upper() != key
+        ]
+        removed = len(history) - len(kept)
+        if removed:
+            try:
+                _write_sku_history(kept)
+            except OSError:
+                app.logger.exception("Unable to delete SKU from shared history")
+                return jsonify({"error": "Could not delete SKU"}), 500
+    return jsonify({"removed": removed, "saved": len(kept)})
 
 
 @app.route("/api/sku-history/import", methods=["POST"])
