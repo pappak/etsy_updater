@@ -39,6 +39,8 @@ from etsy_client import (
 )
 from stats_db import init_db, record_snapshot, get_snapshots, get_all_latest_snapshots, get_daily_views
 
+import labelife
+
 load_dotenv()
 
 app = Flask(__name__)
@@ -768,6 +770,45 @@ def sku_generator(asset_path):
     response = make_response(send_from_directory(generator_root, "logo.png"))
     response.headers["Cache-Control"] = "public, max-age=3600"
     return response
+
+
+# ---- SKU Generator → Labelife 5 (PM-2410-BT thermal printer) ----
+
+
+def _labelife_cors(response):
+    """Allow the generator to call in from localhost:3000 or a file:// page."""
+    origin = request.headers.get("Origin", "")
+    if origin == "null" or origin.startswith(("http://localhost", "http://127.0.0.1")):
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "content-type"
+        response.headers["Vary"] = "Origin"
+    return response
+
+
+@app.route("/sku-generator/labelife", methods=["OPTIONS", "POST"])
+def sku_generator_labelife():
+    """Queue a batch of SKU labels into Labelife 5's print history."""
+    if request.method == "OPTIONS":
+        return _labelife_cors(make_response("", 204))
+
+    def fail(message, status):
+        return _labelife_cors(jsonify({"error": message})), status
+
+    if "access_token" not in session:
+        return fail("Open the generator from the Etsy Manager app first.", 401)
+
+    payload = request.get_json(silent=True) or {}
+    try:
+        result = labelife.send_labels(payload.get("entries"))
+    except labelife.LabelifeError as exc:
+        status = 409 if "quit Labelife" in str(exc) else 400
+        return fail(str(exc), status)
+    except Exception:
+        app.logger.exception("Sending labels to Labelife failed")
+        return fail("Could not write the labels", 500)
+    return _labelife_cors(jsonify(result))
 
 
 # ---- LWSG Sale Tracker (built SPA served from the sibling project) ----
