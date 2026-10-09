@@ -14,10 +14,17 @@ import json
 import re
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
 
-CONFIG_DIR = Path.home() / "Library/Application Support/QUIN/Labelife/Config"
+# Labelife 5 keeps the same Config layout on both platforms, but stores it
+# under ~/Library/Application Support on macOS and %APPDATA% on Windows.
+CONFIG_DIR = (
+    Path.home() / "AppData" / "Roaming" / "QUIN" / "Labelife" / "Config"
+    if sys.platform == "win32"
+    else Path.home() / "Library" / "Application Support" / "QUIN" / "Labelife" / "Config"
+)
 HISTORY_DIR = CONFIG_DIR / "HistoryLabels"
 PRINT_HISTORY = CONFIG_DIR / "PrintHistory"
 IMAGE_STABLE = CONFIG_DIR / "ImageCache"
@@ -37,6 +44,15 @@ class LabelifeError(RuntimeError):
 
 
 def labelife_running() -> bool:
+    """True while the Labelife app is up. pgrep matches the macOS bundle name;
+    on Windows tasklist only prints a row for a real match (otherwise it emits
+    an INFO line), so the image name is looked for in the output."""
+    if sys.platform == "win32":
+        proc = subprocess.run(
+            ["tasklist", "/FI", "IMAGENAME eq Labelife.exe", "/NH"],
+            capture_output=True, text=True, errors="replace",
+        )
+        return "Labelife.exe" in proc.stdout
     return subprocess.run(["pgrep", "-x", "Labelife"], capture_output=True).returncode == 0
 
 
