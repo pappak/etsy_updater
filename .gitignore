@@ -27,3 +27,5 @@ credentials.json
 *.sqlite3
 *.db-journal
 .workshop/
+
+.phone_token

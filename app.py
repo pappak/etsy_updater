@@ -5,6 +5,7 @@ import os
 import json
 import time
 import secrets
+import hmac
 from functools import wraps
 
 from flask import (
@@ -1135,6 +1136,171 @@ def api_inventory_counts_reset():
             app.logger.exception("Unable to reset inventory counts")
             return jsonify({"error": "Could not reset counts"}), 500
     return jsonify({"counts": {}, "reset": True})
+
+
+# ---- Phone app (TexStyls Stock) ----
+
+PHONE_TOKEN_FILE = Path(__file__).resolve().parent / ".phone_token"
+PHONE_TOKEN_LOCK = threading.Lock()
+
+
+def _read_phone_token():
+    """Return the shared phone-app token, creating one on first use."""
+    try:
+        token = PHONE_TOKEN_FILE.read_text(encoding="utf-8").strip()
+        if token:
+            return token
+    except OSError:
+        pass
+    with PHONE_TOKEN_LOCK:
+        try:
+            token = PHONE_TOKEN_FILE.read_text(encoding="utf-8").strip()
+            if token:
+                return token
+        except OSError:
+            pass
+        token = secrets.token_urlsafe(24)
+        PHONE_TOKEN_FILE.write_text(token + "\n", encoding="utf-8")
+        return token
+
+
+def _rotate_phone_token():
+    with PHONE_TOKEN_LOCK:
+        token = secrets.token_urlsafe(24)
+        PHONE_TOKEN_FILE.write_text(token + "\n", encoding="utf-8")
+        return token
+
+
+def require_phone_token(f):
+    """Guard for the phone app: shared secret header instead of an Etsy session."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        provided = request.headers.get("X-Stock-Token", "")
+        expected = _read_phone_token()
+        if not provided or not hmac.compare_digest(provided, expected):
+            return jsonify({"error": "Missing or invalid X-Stock-Token"}), 401
+        return f(*args, **kwargs)
+    return decorated
+
+
+STOCK_FILE = Path(
+    os.getenv(
+        "STOCK_FILE",
+        Path(__file__).resolve().parent.parent / "SKU Code Generator" / "texstyls-stock.json",
+    )
+)
+STOCK_LOCK = threading.Lock()
+
+
+def _read_stock():
+    try:
+        data = json.loads(STOCK_FILE.read_text(encoding="utf-8"))
+        stock = data.get("stock", {})
+        return stock if isinstance(stock, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _write_stock(stock):
+    """Atomically persist per-SKU quantities. Call inside STOCK_LOCK."""
+    STOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "updated_at": datetime.now().isoformat(timespec="seconds"),
+        "stock": stock,
+    }
+    fd, temp_name = tempfile.mkstemp(prefix=".stock-", suffix=".tmp", dir=STOCK_FILE.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as temp_file:
+            json.dump(payload, temp_file, ensure_ascii=False, indent=2)
+            temp_file.flush()
+            os.fsync(temp_file.fileno())
+        os.replace(temp_name, STOCK_FILE)
+    finally:
+        if os.path.exists(temp_name):
+            os.unlink(temp_name)
+
+
+@app.route("/api/phone/stock", methods=["GET"])
+@require_phone_token
+def api_phone_stock_all():
+    """Full per-SKU stock snapshot for the phone app."""
+    with STOCK_LOCK:
+        stock = _read_stock()
+    return jsonify(stock)
+
+
+@app.route("/api/phone/stock/<path:code>", methods=["GET", "POST"])
+@require_phone_token
+def api_phone_stock_one(code):
+    """Read or adjust one SKU's quantity ({"qty": n} or {"delta": ±n})."""
+    key = str(code).strip().upper()
+    if not key:
+        return jsonify({"error": "Missing SKU code"}), 400
+
+    if request.method == "GET":
+        entry = _read_stock().get(key)
+        if not isinstance(entry, dict):
+            return jsonify({"code": key, "qty": 0, "unknown": True})
+        return jsonify({"code": key, "qty": entry.get("qty", 0), "updated_at": entry.get("updated_at")})
+
+    body = request.get_json(silent=True) or {}
+    with STOCK_LOCK:
+        stock = _read_stock()
+        current = stock.get(key)
+        try:
+            current_qty = int(current.get("qty", 0)) if isinstance(current, dict) else 0
+        except (TypeError, ValueError):
+            current_qty = 0
+        if "qty" in body:
+            try:
+                qty = int(body.get("qty"))
+            except (TypeError, ValueError):
+                return jsonify({"error": "qty must be an integer"}), 400
+        elif "delta" in body:
+            try:
+                delta = int(body.get("delta"))
+            except (TypeError, ValueError):
+                return jsonify({"error": "delta must be an integer"}), 400
+            qty = current_qty + delta
+        else:
+            return jsonify({"error": "Provide qty or delta"}), 400
+        qty = max(0, qty)
+        stamp = datetime.now().isoformat(timespec="seconds")
+        stock[key] = {"qty": qty, "updated_at": stamp}
+        try:
+            _write_stock(stock)
+        except OSError:
+            app.logger.exception("Unable to save stock")
+            return jsonify({"error": "Could not save stock"}), 500
+    return jsonify({"code": key, "qty": qty, "updated_at": stamp})
+
+
+@app.route("/api/phone/sku/<path:code>", methods=["GET"])
+@require_phone_token
+def api_phone_sku(code):
+    """Full history record for one SKU — what the app shows after a scan."""
+    key = str(code).strip().upper()
+    if not key:
+        return jsonify({"error": "Missing SKU code"}), 400
+    for entry in _read_sku_history():
+        if isinstance(entry, dict) and str(entry.get("code", "")).strip().upper() == key:
+            return jsonify(entry)
+    return jsonify({"error": "Unknown SKU"}), 404
+
+
+@app.route("/phone")
+@login_required
+def phone_page():
+    """Show the token the phone app must send with every request."""
+    return render_template("phone.html", token=_read_phone_token())
+
+
+@app.route("/phone/regenerate", methods=["POST"])
+@login_required
+def phone_regenerate_token():
+    token = _rotate_phone_token()
+    flash("New phone token generated — update it in the app's Settings.", "info")
+    return render_template("phone.html", token=token)
 
 
 @app.route("/bulk-update", methods=["GET", "POST"])
