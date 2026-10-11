@@ -25,6 +25,7 @@ from pathlib import Path
 import threading
 import tempfile
 import uuid
+import sqlite3
 
 import requests
 
@@ -1293,6 +1294,41 @@ def api_phone_sku(code):
 def api_phone_sku_history():
     """Entire shared history list — lets the phone's Stock tab show item names."""
     return jsonify(_read_sku_history())
+
+
+TRACKER_DB = Path(
+    os.getenv(
+        "TRACKER_DB",
+        Path.home() / "Projects" / "LWSG-Sale-Tracker" / "backend" / "lwsg_tracker.db",
+    )
+)
+
+
+@app.route("/api/phone/photo/<path:code>", methods=["GET"])
+@require_phone_token
+def api_phone_photo(code):
+    """Product photo for a SKU, sourced from the Sale Tracker's inventory database."""
+    key = str(code).strip().upper()
+    if not key:
+        return jsonify({"error": "Missing SKU code"}), 400
+    if not TRACKER_DB.exists():
+        return jsonify({"error": "Inventory database not found"}), 404
+    try:
+        conn = sqlite3.connect(f"file:{TRACKER_DB}?mode=ro", uri=True)
+        try:
+            row = conn.execute(
+                "SELECT image_url FROM items WHERE UPPER(sku) = ? AND image_url IS NOT NULL"
+                " AND image_url != '' LIMIT 1",
+                (key,),
+            ).fetchone()
+        finally:
+            conn.close()
+    except sqlite3.Error as exc:
+        app.logger.warning("Photo lookup failed for %s: %s", key, exc)
+        return jsonify({"error": "Could not read inventory database"}), 500
+    if not row:
+        return jsonify({"code": key, "photo_url": None})
+    return jsonify({"code": key, "photo_url": row[0]})
 
 
 @app.route("/phone")
