@@ -1413,6 +1413,161 @@ def _tracker_all_stock():
     return out
 
 
+def _tracker_etsy_link(code):
+    """(listing_id, etsy_url) for a SKU from the Sale Tracker, or (None, None)."""
+    conn = _tracker_connect(read_only=True)
+    if conn is None:
+        return None, None
+    try:
+        row = conn.execute(
+            "SELECT etsy_listing_id, etsy_url FROM items"
+            " WHERE UPPER(sku) = UPPER(?) AND deleted = 'N'"
+            " AND COALESCE(etsy_listing_id, '') != '' LIMIT 1",
+            (code,),
+        ).fetchone()
+    except sqlite3.Error:
+        return None, None
+    finally:
+        conn.close()
+    if not row:
+        return None, None
+    lid = str(row[0]).strip()
+    return (int(lid) if lid.isdigit() else None), (row[1] or None)
+
+
+def _etsy_price_str(price):
+    """Format an Etsy price dict like {'amount': 2400, 'divisor': 100, ...}."""
+    if not isinstance(price, dict) or price.get("amount") is None:
+        return None
+    try:
+        amount = float(price["amount"]) / float(price.get("divisor") or 100)
+    except (TypeError, ValueError, ZeroDivisionError):
+        return None
+    return f"{amount:.2f} {price.get('currency_code') or ''}".strip()
+
+
+_STATE_LABELS = {"active": "Active", "inactive": "Inactive", "draft": "Draft"}
+_WHO_LABELS = {
+    "i_did": "I made it",
+    "someone_else": "Someone else made it",
+    "collective": "A member of my shop made it",
+}
+_WHEN_LABELS = {
+    "made_to_order": "Made to order",
+    "2020_2026": "2020–2026",
+    "2020_2023": "2020–2023",
+    "2010_2019": "2010–2019",
+    "2000_2009": "2000–2009",
+    "before_2000": "Before 2000",
+}
+
+
+@app.route("/api/phone/listing/<path:code>", methods=["GET"])
+@require_phone_token
+def api_phone_listing(code):
+    """Everything useful about the Etsy listing behind a scanned SKU."""
+    key = str(code).strip().upper()
+    listing_id, tracker_url = _tracker_etsy_link(key)
+    if not listing_id:
+        return jsonify({"code": key, "error": "not linked to Etsy"}), 404
+
+    data = load_tokens_from_disk()
+    if not data or not data.get("access_token"):
+        return jsonify({"error": "Etsy not signed in on the server"}), 503
+
+    client = EtsyClient(
+        keystring=ETSY_KEYSTRING,
+        shared_secret=ETSY_SHARED_SECRET,
+        access_token=data.get("access_token"),
+        refresh_token=data.get("refresh_token"),
+        token_expiry=data.get("token_expiry", 0),
+    )
+    try:
+        listing = client.get_listing(listing_id)
+        images = client.get_listing_images(listing_id)
+        inventory = client.get_listing_inventory(listing_id)
+    except Exception as exc:
+        app.logger.warning("Phone listing fetch failed for %s: %s", listing_id, exc)
+        return jsonify({"error": f"Etsy API error: {exc}"}), 502
+    finally:
+        if client.access_token and (
+            client.access_token != data.get("access_token")
+            or client.refresh_token != data.get("refresh_token")
+            or client.token_expiry != data.get("token_expiry")
+        ):
+            save_tokens_to_disk(
+                client.access_token, client.refresh_token, client.token_expiry,
+                shop_id=data.get("shop_id"), shop_name=data.get("shop_name"),
+                user_name=data.get("user_name"), user_id=data.get("user_id"),
+            )
+
+    views = listing.get("views", 0) or 0
+    favorites = listing.get("num_favorers", 0) or 0
+    record_snapshot(listing_id, views, favorites)
+
+    variants = []
+    sku_qty = {}
+    for product in (inventory.get("products") or []):
+        p_qty = product.get("quantity") or 0
+        offerings = product.get("offerings") or [{}]
+        price_str = _etsy_price_str((offerings[0] or {}).get("price"))
+        attrs = ", ".join(
+            str(v.get("value") or "")
+            for v in (product.get("property_values") or [])
+        )
+        for sku in str(product.get("sku") or "").split(","):
+            sku = sku.strip().upper()
+            if sku:
+                sku_qty[sku] = sku_qty.get(sku, 0) + p_qty
+                variants.append({
+                    "sku": sku,
+                    "qty": p_qty,
+                    "price": price_str,
+                    "attrs": attrs,
+                })
+
+    pmin, pmax = listing.get("processing_min"), listing.get("processing_max")
+    if pmin is not None and pmax is not None:
+        processing = f"{pmin}–{pmax} days" if pmax != pmin else f"{pmin} days"
+    elif pmin is not None:
+        processing = f"{pmin} days"
+    else:
+        processing = None
+
+    img_results = images.get("results", []) if isinstance(images, dict) else []
+    description = listing.get("description") or ""
+
+    return jsonify({
+        "code": key,
+        "listing_id": listing_id,
+        "title": listing.get("title"),
+        "url": listing.get("url") or tracker_url,
+        "state": _STATE_LABELS.get(listing.get("state"), listing.get("state")),
+        "price": _etsy_price_str(listing.get("price")),
+        "quantity": listing.get("quantity"),
+        "views": views,
+        "favorites": favorites,
+        "tags": listing.get("tags") or [],
+        "materials": listing.get("materials") or [],
+        "description": description[:1200],
+        "description_truncated": len(description) > 1200,
+        "processing": processing,
+        "who_made": _WHO_LABELS.get(listing.get("who_made"), listing.get("who_made")),
+        "when_made": _WHEN_LABELS.get(listing.get("when_made"), listing.get("when_made")),
+        "is_supply": bool(listing.get("is_supply")),
+        "is_personalizable": bool(listing.get("is_personalizable")),
+        "images": [
+            {
+                "full": img.get("url_fullxfull"),
+                "thumb": img.get("url_170x135") or img.get("url_570xN"),
+            }
+            for img in img_results[:6]
+        ],
+        "variants": variants,
+        "sku_qty": sku_qty,
+    })
+
+
 @app.route("/api/phone/photo/<path:code>", methods=["GET"])
 @require_phone_token
 def api_phone_photo(code):
