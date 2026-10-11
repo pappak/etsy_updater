@@ -1288,6 +1288,13 @@ def api_phone_sku(code):
     return jsonify({"error": "Unknown SKU"}), 404
 
 
+@app.route("/api/phone/sku-history", methods=["GET"])
+@require_phone_token
+def api_phone_sku_history():
+    """Entire shared history list — lets the phone's Stock tab show item names."""
+    return jsonify(_read_sku_history())
+
+
 @app.route("/phone")
 @login_required
 def phone_page():
