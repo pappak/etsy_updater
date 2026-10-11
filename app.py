@@ -1224,49 +1224,77 @@ def _write_stock(stock):
 @app.route("/api/phone/stock", methods=["GET"])
 @require_phone_token
 def api_phone_stock_all():
-    """Full per-SKU stock snapshot for the phone app."""
+    """Per-SKU stock snapshot: Sale Tracker inventory plus local-only codes."""
+    merged = {
+        key: {"qty": qty, "updated_at": None, "source": "tracker"}
+        for key, qty in _tracker_all_stock().items()
+    }
     with STOCK_LOCK:
-        stock = _read_stock()
-    return jsonify(stock)
+        local = _read_stock()
+    for key, entry in local.items():
+        if key not in merged and isinstance(entry, dict):
+            merged[key] = {
+                "qty": entry.get("qty", 0),
+                "updated_at": entry.get("updated_at"),
+                "source": "local",
+            }
+    return jsonify(merged)
 
 
 @app.route("/api/phone/stock/<path:code>", methods=["GET", "POST"])
 @require_phone_token
 def api_phone_stock_one(code):
-    """Read or adjust one SKU's quantity ({"qty": n} or {"delta": ±n})."""
+    """Read or adjust one SKU's quantity ({"qty": n} or {"delta": ±n}).
+
+    SKUs that exist in the Sale Tracker read and write its in_stock column;
+    everything else uses the local stock file.
+    """
     key = str(code).strip().upper()
     if not key:
         return jsonify({"error": "Missing SKU code"}), 400
 
+    tracker_qty = _tracker_stock(key)
+
     if request.method == "GET":
+        if tracker_qty is not None:
+            return jsonify({"code": key, "qty": tracker_qty, "source": "tracker"})
         entry = _read_stock().get(key)
         if not isinstance(entry, dict):
             return jsonify({"code": key, "qty": 0, "unknown": True})
         return jsonify({"code": key, "qty": entry.get("qty", 0), "updated_at": entry.get("updated_at")})
 
     body = request.get_json(silent=True) or {}
+    if "qty" in body:
+        try:
+            qty = int(body.get("qty"))
+        except (TypeError, ValueError):
+            return jsonify({"error": "qty must be an integer"}), 400
+    elif "delta" in body:
+        try:
+            delta = int(body.get("delta"))
+        except (TypeError, ValueError):
+            return jsonify({"error": "delta must be an integer"}), 400
+        if tracker_qty is not None:
+            qty = tracker_qty + delta
+        else:
+            current = _read_stock().get(key)
+            try:
+                base = int(current.get("qty", 0)) if isinstance(current, dict) else 0
+            except (TypeError, ValueError):
+                base = 0
+            qty = base + delta
+    else:
+        return jsonify({"error": "Provide qty or delta"}), 400
+    qty = max(0, qty)
+
+    if tracker_qty is not None:
+        if not _tracker_set_stock(key, qty):
+            return jsonify({"error": "Could not update Sale Tracker stock"}), 500
+        return jsonify({"code": key, "qty": qty, "source": "tracker"})
+
+    stamp = datetime.now().isoformat(timespec="seconds")
     with STOCK_LOCK:
         stock = _read_stock()
-        current = stock.get(key)
-        try:
-            current_qty = int(current.get("qty", 0)) if isinstance(current, dict) else 0
-        except (TypeError, ValueError):
-            current_qty = 0
-        if "qty" in body:
-            try:
-                qty = int(body.get("qty"))
-            except (TypeError, ValueError):
-                return jsonify({"error": "qty must be an integer"}), 400
-        elif "delta" in body:
-            try:
-                delta = int(body.get("delta"))
-            except (TypeError, ValueError):
-                return jsonify({"error": "delta must be an integer"}), 400
-            qty = current_qty + delta
-        else:
-            return jsonify({"error": "Provide qty or delta"}), 400
-        qty = max(0, qty)
-        stamp = datetime.now().isoformat(timespec="seconds")
         stock[key] = {"qty": qty, "updated_at": stamp}
         try:
             _write_stock(stock)
@@ -1299,9 +1327,90 @@ def api_phone_sku_history():
 TRACKER_DB = Path(
     os.getenv(
         "TRACKER_DB",
-        Path.home() / "Projects" / "LWSG-Sale-Tracker" / "backend" / "lwsg_tracker.db",
+        Path(__file__).resolve().parent.parent
+        / "LWSG-Sale-Tracker"
+        / "backend"
+        / "lwsg_tracker.db",
     )
 )
+
+
+def _tracker_connect(read_only=True):
+    if not TRACKER_DB.exists():
+        return None
+    try:
+        if read_only:
+            return sqlite3.connect(f"file:{TRACKER_DB}?mode=ro", uri=True)
+        return sqlite3.connect(TRACKER_DB, timeout=5)
+    except sqlite3.Error:
+        return None
+
+
+def _tracker_stock(code):
+    """Current in_stock for a SKU from the Sale Tracker, or None if unknown there."""
+    conn = _tracker_connect(read_only=True)
+    if conn is None:
+        return None
+    try:
+        row = conn.execute(
+            "SELECT in_stock FROM items WHERE UPPER(sku) = ? AND deleted = 'N' LIMIT 1",
+            (code,),
+        ).fetchone()
+    except sqlite3.Error:
+        return None
+    finally:
+        conn.close()
+    if row is None:
+        return None
+    try:
+        return int(row[0] or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _tracker_set_stock(code, qty):
+    """Write in_stock for every active Sale Tracker row with this SKU."""
+    conn = _tracker_connect(read_only=False)
+    if conn is None:
+        return False
+    try:
+        cur = conn.execute(
+            "UPDATE items SET in_stock = ?, updated_at_local = CURRENT_TIMESTAMP"
+            " WHERE UPPER(sku) = ? AND deleted = 'N'",
+            (qty, code),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    except sqlite3.Error:
+        app.logger.exception("Tracker stock update failed for %s", code)
+        return False
+    finally:
+        conn.close()
+
+
+def _tracker_all_stock():
+    """{SKU: qty} for every active Sale Tracker item."""
+    conn = _tracker_connect(read_only=True)
+    if conn is None:
+        return {}
+    try:
+        rows = conn.execute(
+            "SELECT sku, in_stock FROM items"
+            " WHERE deleted = 'N' AND sku IS NOT NULL AND sku != ''"
+        ).fetchall()
+    except sqlite3.Error:
+        return {}
+    finally:
+        conn.close()
+    out = {}
+    for sku, qty in rows:
+        key = str(sku).strip().upper()
+        if key and key not in out:
+            try:
+                out[key] = int(qty or 0)
+            except (TypeError, ValueError):
+                out[key] = 0
+    return out
 
 
 @app.route("/api/phone/photo/<path:code>", methods=["GET"])
