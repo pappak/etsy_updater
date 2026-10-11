@@ -194,7 +194,7 @@ def login_required(f):
     def decorated(*args, **kwargs):
         if "access_token" not in session:
             flash("Please sign in with Etsy first.", "warning")
-            return redirect(url_for("index"))
+            return redirect(url_for("login"))
         return f(*args, **kwargs)
     return decorated
 
@@ -203,8 +203,8 @@ def login_required(f):
 
 @app.route("/")
 def index():
-    """Landing page."""
-    return render_template("index.html", authenticated="access_token" in session)
+    """Skip the landing page — straight to the dashboard (or sign-in)."""
+    return redirect(url_for("dashboard"))
 
 
 @app.route("/login")
@@ -230,7 +230,7 @@ def oauth_callback():
     error = request.args.get("error")
     if error:
         flash(f"Etsy authorization error: {error}", "danger")
-        return redirect(url_for("index"))
+        return redirect(url_for("login"))
 
     code = request.args.get("code")
     state = request.args.get("state")
@@ -239,11 +239,11 @@ def oauth_callback():
 
     if not code or not code_verifier:
         flash("Missing authorization code or verifier. Please try again.", "danger")
-        return redirect(url_for("index"))
+        return redirect(url_for("login"))
 
     if state != stored_state:
         flash("State mismatch. Possible CSRF attack.", "danger")
-        return redirect(url_for("index"))
+        return redirect(url_for("login"))
 
     try:
         token_data = exchange_code_for_token(
@@ -251,7 +251,7 @@ def oauth_callback():
         )
     except Exception as e:
         flash(f"Failed to exchange code for token: {e}", "danger")
-        return redirect(url_for("index"))
+        return redirect(url_for("login"))
 
     session["access_token"] = token_data["access_token"]
     session["refresh_token"] = token_data.get("refresh_token")
@@ -299,7 +299,7 @@ def logout():
     except Exception as e:
         print(f"[WARN] Could not remove token file: {e}")
     flash("Logged out.", "info")
-    return redirect(url_for("index"))
+    return redirect(url_for("login"))
 
 
 @app.route("/dashboard")
@@ -308,7 +308,7 @@ def dashboard():
     """Main dashboard showing all listings."""
     client = get_client()
     if not client:
-        return redirect(url_for("index"))
+        return redirect(url_for("login"))
 
     shop_id = session.get("shop_id")
     if not shop_id:
@@ -381,7 +381,7 @@ def listing_detail(listing_id):
     """View and edit a single listing."""
     client = get_client()
     if not client:
-        return redirect(url_for("index"))
+        return redirect(url_for("login"))
 
     try:
         listing = client.get_listing(listing_id)
@@ -413,7 +413,7 @@ def update_listing(listing_id):
     """Update a listing's fields."""
     client = get_client()
     if not client:
-        return redirect(url_for("index"))
+        return redirect(url_for("login"))
 
     # Collect fields that were submitted (only non-empty ones)
     update_fields = {}
@@ -511,7 +511,7 @@ def update_listing_inventory(listing_id):
     """Update a listing's inventory (pricing/quantity per variant)."""
     client = get_client()
     if not client:
-        return redirect(url_for("index"))
+        return redirect(url_for("login"))
 
     products_json = request.form.get("products_json")
     if not products_json:
@@ -534,7 +534,7 @@ def stats_dashboard():
     """Shop stats dashboard — listings overview + sales/revenue."""
     client = get_client()
     if not client:
-        return redirect(url_for("index"))
+        return redirect(url_for("login"))
 
     shop_id = session.get("shop_id")
 
@@ -1143,7 +1143,7 @@ def bulk_update():
     """Bulk update multiple listings."""
     client = get_client()
     if not client:
-        return redirect(url_for("index"))
+        return redirect(url_for("login"))
 
     shop_id = session.get("shop_id")
 
@@ -1216,7 +1216,7 @@ def reactivate_listing(listing_id):
     """Put a deactivated listing back on Etsy (state → active)."""
     client = get_client()
     if not client:
-        return redirect(url_for("index"))
+        return redirect(url_for("login"))
     try:
         client.update_listing(listing_id, shop_id=session.get("shop_id"), state="active")
         save_client_tokens(client)
