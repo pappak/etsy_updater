@@ -675,7 +675,15 @@ def sku_generator(asset_path):
     relative_path = asset_path or "sku-generator.html"
     if relative_path == "sku-generator.html":
         # Keep all root-absolute assets and print-logo references within the app.
-        html = (generator_root / relative_path).read_text(encoding="utf-8")
+        try:
+            html = (generator_root / relative_path).read_text(encoding="utf-8")
+        except OSError:
+            flash(
+                "SKU Generator files are briefly unavailable (storage hiccup) — "
+                "try again in a few seconds.",
+                "warning",
+            )
+            return redirect(url_for("dashboard"))
         html = html.replace('href="/"', 'href="/dashboard"')
         html = html.replace('src="/logo.png"', 'src="/sku-generator/logo.png"')
         html = html.replace("const HEADER_LOGO_PNG = '/logo.png';", "const HEADER_LOGO_PNG = '/sku-generator/logo.png';")
