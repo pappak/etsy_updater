@@ -10,40 +10,74 @@
         body {
             background-color: #f8f9fa;
         }
-        .navbar-brand i {
-            color: #f56400;
+        /* Main nav — matches the Sale Tracker's white menu exactly */
+        .st-nav {
+            background: #fff;
+            box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+            border-bottom: 1px solid #e2e8f0;
         }
-        /* Bigger, higher-contrast menu text */
-        .navbar {
-            padding-top: 0.7rem;
-            padding-bottom: 0.7rem;
+        .st-nav-inner {
+            max-width: 80rem;
+            margin: 0 auto;
+            padding: 0 1.5rem;
+            min-height: 4rem;
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1.5rem;
         }
-        .navbar-brand {
-            font-size: 1.35rem;
+        .st-nav-title {
+            font-size: 1.25rem;
             font-weight: 700;
-            letter-spacing: 0.01em;
+            color: #0f172a;
+            margin: 0;
+            flex-shrink: 0;
         }
-        .navbar .nav-link {
-            font-size: 1.06rem;
-            font-weight: 600;
-            color: rgba(255, 255, 255, 0.95);
-            padding: 0.55rem 0.85rem;
-            border-radius: 0.4rem;
+        .st-nav-links {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0.25rem;
         }
-        .navbar .nav-link:hover,
-        .navbar .nav-link:focus {
+        .st-nav-links a {
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: #475569;
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.375rem;
+            text-decoration: none;
+            transition: color 0.15s, background-color 0.15s;
+        }
+        .st-nav-links a:hover {
+            background: #f1f5f9;
+            color: #0f172a;
+        }
+        .st-nav-links a.active {
+            background: #29378F;
             color: #fff;
-            background-color: rgba(255, 255, 255, 0.12);
         }
-        .navbar .nav-link.text-danger {
-            color: #ff8080;
+        .st-nav-links a.active:hover {
+            background: #29378F;
+            color: #fff;
         }
-        .navbar .nav-link.text-danger:hover {
-            color: #ffb3b3;
-            background-color: rgba(255, 255, 255, 0.12);
+        .st-nav-right {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            font-size: 0.875rem;
         }
-        .navbar .badge {
-            font-size: 0.78rem;
+        .st-nav-user {
+            color: #64748b;
+        }
+        .st-nav-logout {
+            color: #e11d48;
+            font-weight: 500;
+            text-decoration: none;
+        }
+        .st-nav-logout:hover {
+            color: #be123c;
+            text-decoration: underline;
         }
         /* Cross-app switcher — same strip on Etsy Manager, SKU Generator, Sale Tracker */
         .app-switcher {
@@ -120,66 +154,30 @@
 </head>
 <body>
     <div class="app-switcher">
-        <span class="current"><i class="bi bi-shop"></i> Etsy Manager</span>
-        <a href="/sku-generator"><i class="bi bi-upc-scan"></i> SKU Generator</a>
-        <a href="/sale-tracker"><i class="bi bi-graph-up-arrow"></i> Sale Tracker</a>
+        <span class="current">Etsy Manager</span>
+        <a href="/sku-generator">SKU Generator</a>
+        <a href="/sale-tracker">Sale Tracker</a>
     </div>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-        <div class="container">
-            <a class="navbar-brand" href="/">
-                <i class="bi bi-shop me-2"></i>Etsy Manager
-                <span class="badge bg-secondary ms-2 align-middle">v{{ app_version }}</span>
-            </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav me-auto">
-                    {% if session.get('access_token') %}
-                    <li class="nav-item">
-                        <a class="nav-link" href="/dashboard">
-                            <i class="bi bi-grid-3x3-gap"></i> Dashboard
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/stats">
-                            <i class="bi bi-bar-chart-line"></i> Stats
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/bulk-update">
-                            <i class="bi bi-pencil-square"></i> Bulk Update
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/phone">
-                            <i class="bi bi-phone"></i> Phone
-                        </a>
-                    </li>
-                    {% endif %}
-                </ul>
-                <ul class="navbar-nav">
-                    {% if session.get('access_token') %}
-                    <li class="nav-item">
-                        <span class="nav-link text-light">
-                            <i class="bi bi-person-circle"></i>
-                            {{ session.get('shop_name', session.get('user_name', 'User')) }}
-                        </span>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link text-danger" href="/logout">
-                            <i class="bi bi-box-arrow-right"></i> Logout
-                        </a>
-                    </li>
-                    {% else %}
-                    <li class="nav-item">
-                        <a class="nav-link" href="/login">
-                            <i class="bi bi-box-arrow-in-right"></i> Sign in with Etsy
-                        </a>
-                    </li>
-                    {% endif %}
-                </ul>
+    {% set p = request.path %}
+    <nav class="st-nav">
+        <div class="st-nav-inner">
+            <h1 class="st-nav-title">Etsy Manager</h1>
+            <div class="st-nav-links">
+                {% if session.get('access_token') %}
+                <a href="/dashboard" class="{{ 'active' if p == '/dashboard' or p == '/' else '' }}">Dashboard</a>
+                <a href="/stats" class="{{ 'active' if p.startswith('/stats') else '' }}">Stats</a>
+                <a href="/bulk-update" class="{{ 'active' if p.startswith('/bulk-update') else '' }}">Bulk Update</a>
+                <a href="/phone" class="{{ 'active' if p.startswith('/phone') else '' }}">Phone</a>
+                {% else %}
+                <a href="/login" class="{{ 'active' if p == '/login' else '' }}">Sign in with Etsy</a>
+                {% endif %}
             </div>
+            {% if session.get('access_token') %}
+            <div class="st-nav-right">
+                <span class="st-nav-user"><i class="bi bi-person-circle"></i> {{ session.get('shop_name', session.get('user_name', 'User')) }}</span>
+                <a href="/logout" class="st-nav-logout">Logout</a>
+            </div>
+            {% endif %}
         </div>
     </nav>
     <div style="background-color: #fff; padding: 10px 0; text-align: center; border-bottom: 1px solid #e9ecef;">
