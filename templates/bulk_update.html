@@ -69,7 +69,7 @@
                         <th>Price</th>
                         <th>Qty</th>
                         <th>Action</th>
-                        <th>Counted</th>
+                        <th style="width: 90px;">QR</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -78,7 +78,15 @@
                     {% set lid = listing_data.get('listing_id', listing.get('id')) %}
                     {% set title = listing_data.get('title', 'Untitled') %}
                     {% set state = listing_data.get('state', 'unknown') %}
-                    {% set counted = counts.get('etsy:' ~ lid) %}
+                    {% set raw_skus = listing_data.get('skus') or [] %}
+                    {% set ns = namespace(sku='') %}
+                    {% for s in raw_skus %}
+                        {% if not ns.sku %}
+                            {% if s is string and s.strip() %}{% set ns.sku = s.strip() %}
+                            {% elif s is sequence and s and s[0] %}{% set ns.sku = s[0] %}{% endif %}
+                        {% endif %}
+                    {% endfor %}
+                    {% set qr_sku = ns.sku %}
                     {% set p = listing_data.get('price', {}) %}
                     {% set p_amount = p.get('amount', 0) / p.get('divisor', 1) if p else 0 %}
                     <tr>
@@ -114,11 +122,13 @@
                             </a>
                         </td>
                         <td>
-                            <button type="button"
-                                    class="btn btn-sm rounded-pill count-toggle {% if counted %}counted{% else %}btn-outline-secondary{% endif %}"
-                                    data-lid="{{ lid }}">
-                                <i class="bi bi-{% if counted %}check-circle-fill{% else %}circle{% endif %} me-1"></i>{% if counted %}Counted{% else %}Not counted{% endif %}
-                            </button>
+                            {% if qr_sku %}
+                            <img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data={{ qr_sku | urlencode }}"
+                                 alt="QR {{ qr_sku }}" title="Scan with TexStyls Stock — {{ qr_sku }}"
+                                 style="width: 64px; height: 64px;" class="rounded">
+                            {% else %}
+                            <span class="small text-muted">—</span>
+                            {% endif %}
                         </td>
                     </tr>
                     {% endfor %}
@@ -129,7 +139,15 @@
                     {% set listing_data = listing.get('listing', listing) %}
                     {% set lid = listing_data.get('listing_id', listing.get('id')) %}
                     {% set title = listing_data.get('title', 'Untitled') %}
-                    {% set counted = counts.get('etsy:' ~ lid) %}
+                    {% set raw_skus = listing_data.get('skus') or [] %}
+                    {% set ns = namespace(sku='') %}
+                    {% for s in raw_skus %}
+                        {% if not ns.sku %}
+                            {% if s is string and s.strip() %}{% set ns.sku = s.strip() %}
+                            {% elif s is sequence and s and s[0] %}{% set ns.sku = s[0] %}{% endif %}
+                        {% endif %}
+                    {% endfor %}
+                    {% set qr_sku = ns.sku %}
                     {% set p = listing_data.get('price', {}) %}
                     {% set p_amount = p.get('amount', 0) / p.get('divisor', 1) if p else 0 %}
                     <tr class="table-light">
@@ -161,11 +179,13 @@
                             </a>
                         </td>
                         <td>
-                            <button type="button"
-                                    class="btn btn-sm rounded-pill count-toggle {% if counted %}counted{% else %}btn-outline-secondary{% endif %}"
-                                    data-lid="{{ lid }}">
-                                <i class="bi bi-{% if counted %}check-circle-fill{% else %}circle{% endif %} me-1"></i>{% if counted %}Counted{% else %}Not counted{% endif %}
-                            </button>
+                            {% if qr_sku %}
+                            <img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data={{ qr_sku | urlencode }}"
+                                 alt="QR {{ qr_sku }}" title="Scan with TexStyls Stock — {{ qr_sku }}"
+                                 style="width: 64px; height: 64px; opacity: .55;" class="rounded">
+                            {% else %}
+                            <span class="small text-muted">—</span>
+                            {% endif %}
                         </td>
                     </tr>
                     {% endfor %}
@@ -223,28 +243,6 @@ document.getElementById('bulk-form')?.addEventListener('submit', function(e) {
     if (!confirm(`Update ${count} listing(s)? This cannot be undone.`)) {
         e.preventDefault();
     }
-});
-
-// Counted pill — same shared marks as the dashboard and the tracker.
-document.querySelectorAll('.count-toggle').forEach(btn => {
-    btn.addEventListener('click', async () => {
-        const counted = !btn.classList.contains('counted');
-        try {
-            const resp = await fetch('/api/inventory-counts', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ key: `etsy:${btn.dataset.lid}`, counted })
-            });
-            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-            btn.classList.toggle('counted', counted);
-            btn.classList.toggle('btn-outline-secondary', !counted);
-            btn.innerHTML = counted
-                ? '<i class="bi bi-check-circle-fill me-1"></i>Counted'
-                : '<i class="bi bi-circle me-1"></i>Not counted';
-        } catch (err) {
-            alert(`Could not save the counted mark: ${err.message}`);
-        }
-    });
 });
 
 // Reveal deactivated listings (hidden by default).

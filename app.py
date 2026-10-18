@@ -335,7 +335,7 @@ def dashboard():
     if not shop_id:
         flash("No shop found. Make sure you have an Etsy shop.", "warning")
         return render_template(
-            "dashboard.html", shop_name=None, listings=[], counts={}, counted_total=0
+            "dashboard.html", shop_name=None, listings=[], total=0
         )
 
     try:
@@ -352,19 +352,11 @@ def dashboard():
             offset += 100
 
         save_client_tokens(client)
-        counts = _read_counts()
-        counted_total = sum(
-            1
-            for lid in (entry.get("listing_id") for entry in all_listings)
-            if f"etsy:{lid}" in counts
-        )
         return render_template(
             "dashboard.html",
             shop_name=session.get("shop_name", f"Shop #{shop_id}"),
             listings=all_listings,
             total=len(all_listings),
-            counts=counts,
-            counted_total=counted_total,
         )
     except Exception as e:
         flash(f"Error fetching listings: {e}", "danger")
@@ -372,8 +364,7 @@ def dashboard():
             "dashboard.html",
             shop_name=session.get("shop_name"),
             listings=[],
-            counts={},
-            counted_total=0,
+            total=0,
         )
 
 
