@@ -7,189 +7,239 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.2/font/bootstrap-icons.min.css">
     <style>
+        :root {
+            --brand: #4D167C;
+            --brand-dark: #3a115e;
+            --accent: #f56400;
+            --accent-dark: #d95600;
+            --page-bg: #f4f2ee;
+            --shell-width: 1020px;
+        }
         body {
-            background-color: #f8f9fa;
+            background: var(--page-bg);
+            font-size: 0.95rem;
         }
-        /* Main nav — matches the Sale Tracker's white menu exactly */
-        .st-nav {
-            background: #fff;
-            box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
-            border-bottom: 1px solid #e2e8f0;
+        /* ============ Unified shell: one bar for all three apps ============ */
+        .shell-bar {
+            background: linear-gradient(180deg, var(--brand) 0%, var(--brand-dark) 100%);
+            color: #fff;
+            border-bottom: 2px solid rgba(0,0,0,0.25);
         }
-        .st-nav-inner {
-            max-width: 80rem;
+        .shell-row {
+            max-width: var(--shell-width);
             margin: 0 auto;
-            padding: 0 1.5rem;
-            min-height: 4rem;
+            padding: 0 0.9rem;
             display: flex;
             align-items: center;
+            gap: 0.75rem;
+            min-height: 46px;
             flex-wrap: wrap;
-            gap: 1.5rem;
         }
-        .st-nav-title {
-            font-size: 1.25rem;
-            font-weight: 700;
-            color: #0f172a;
-            margin: 0;
-            flex-shrink: 0;
+        .shell-row.shells-row-sub {
+            min-height: 34px;
+            padding-top: 0.15rem;
+            padding-bottom: 0.15rem;
+            border-top: 1px solid rgba(255,255,255,0.12);
         }
-        .st-nav-links {
-            display: flex;
+        .shell-brand {
+            display: inline-flex;
             align-items: center;
-            flex-wrap: wrap;
-            gap: 0.25rem;
-        }
-        .st-nav-links a {
-            font-size: 0.875rem;
-            font-weight: 500;
-            color: #475569;
-            padding: 0.5rem 0.75rem;
-            border-radius: 0.375rem;
-            text-decoration: none;
-            transition: color 0.15s, background-color 0.15s;
-        }
-        .st-nav-links a:hover {
-            background: #f1f5f9;
-            color: #0f172a;
-        }
-        .st-nav-links a.active {
-            background: #29378F;
-            color: #fff;
-        }
-        .st-nav-links a.active:hover {
-            background: #29378F;
-            color: #fff;
-        }
-        .st-nav-right {
-            margin-left: auto;
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            font-size: 0.875rem;
-        }
-        .st-nav-user {
-            color: #64748b;
-        }
-        .st-nav-logout {
-            color: #e11d48;
-            font-weight: 500;
-            text-decoration: none;
-        }
-        .st-nav-logout:hover {
-            color: #be123c;
-            text-decoration: underline;
-        }
-        /* Cross-app switcher — same strip on Etsy Manager, SKU Generator, Sale Tracker */
-        .app-switcher {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-wrap: wrap;
             gap: 0.5rem;
-            background: #4D167C;
-            border-bottom: 2px solid #001E87;
-            padding: 0.65rem 1rem;
+            color: #fff;
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 1rem;
+            letter-spacing: 0.02em;
         }
-        .app-switcher a,
-        .app-switcher .current {
+        .shell-brand img { height: 24px; width: auto; display: block; }
+        .shell-brand:hover { color: #fff; opacity: 0.92; }
+        .shell-tabs {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+            margin-left: 0.5rem;
+        }
+        .shell-tab {
             display: inline-flex;
             align-items: center;
             gap: 0.35rem;
-            color: #fff;
-            font-size: 0.95rem;
+            color: rgba(255,255,255,0.88);
+            font-size: 0.86rem;
             font-weight: 600;
-            padding: 0.35rem 1rem;
-            border-radius: 999px;
             text-decoration: none;
+            padding: 0.3rem 0.8rem;
+            border-radius: 999px;
+            transition: background-color 0.12s, color 0.12s;
         }
-        .app-switcher a:hover,
-        .app-switcher a:focus {
+        .shell-tab:hover { color: #fff; background: rgba(255,255,255,0.14); }
+        .shell-tab.active {
+            background: var(--accent);
             color: #fff;
-            background-color: rgba(255, 255, 255, 0.18);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.3);
         }
-        .app-switcher .current {
-            background-color: #f56400;
+        .shell-spacer { flex: 1 1 auto; }
+        .shell-user {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-size: 0.82rem;
+            color: rgba(255,255,255,0.9);
+        }
+        .shell-user .shell-name { font-weight: 600; }
+        .shell-logout {
+            color: #ff9d7a;
+            text-decoration: none;
+            font-size: 0.82rem;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+        .shell-logout:hover { color: #ffbfa8; }
+        .shell-version {
+            font-size: 0.68rem;
+            font-weight: 600;
+            background: rgba(255,255,255,0.16);
+            border-radius: 999px;
+            padding: 0.12rem 0.5rem;
+        }
+        .shell-sub { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+        .shell-sub a {
+            color: rgba(255,255,255,0.85);
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-decoration: none;
+            padding: 0.15rem 0.35rem;
+            border-radius: 0.3rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+        }
+        .shell-sub a:hover { color: #fff; background: rgba(255,255,255,0.12); }
+        .shell-sub a.sub-active { color: #fff; background: rgba(255,255,255,0.2); }
+        /* ============ Page frame: centred, never full-bleed ============ */
+        .shell-page {
+            max-width: var(--shell-width);
+            margin: 1.1rem auto 2.5rem;
+            padding: 0 0.9rem;
+        }
+        .shell-card {
+            background: #fff;
+            border: 1px solid rgba(0,0,0,0.07);
+            border-radius: 14px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+        }
+        .shell-card > .flash-container { padding: 0; }
+        .flash-container .alert:first-child { border-radius: 14px 14px 0 0; }
+        /* ============ Shared accents ============ */
+        .shell-accent { color: var(--accent); }
+        .btn-accent {
+            background: var(--accent);
+            border-color: var(--accent);
             color: #fff;
         }
-        .flash-container {
-            margin-top: 1rem;
-        }
-        .listing-card {
-            transition: transform 0.15s, box-shadow 0.15s;
-        }
-        .listing-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        }
-        .listing-thumb {
-            width: 100%;
-            height: 200px;
-            object-fit: cover;
+        .btn-accent:hover {
+            background: var(--accent-dark);
+            border-color: var(--accent-dark);
+            color: #fff;
         }
         .badge-active { background-color: #28a745; }
         .badge-draft { background-color: #6c757d; }
         .badge-expired { background-color: #dc3545; }
-        .stats-card {
-            border-left: 4px solid #f56400;
+        .listing-card { transition: transform 0.15s, box-shadow 0.15s; }
+        .listing-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
         }
+        .listing-thumb { width: 100%; height: 200px; object-fit: cover; }
+        .count-toggle.counted {
+            background-color: var(--accent);
+            border-color: var(--accent);
+            color: #fff;
+        }
+        .count-toggle.counted:hover {
+            background-color: var(--accent-dark);
+            border-color: var(--accent-dark);
+            color: #fff;
+        }
+        .badge.counted-pill { background-color: var(--accent); color: #fff; }
+        .counted-summary { color: var(--accent); }
+        .stats-card { border-left: 4px solid var(--accent); }
     </style>
 </head>
 <body>
-    <div class="app-switcher">
-        <span class="current">Etsy Manager</span>
-        <a href="/sku-generator">SKU Generator</a>
-        <a href="/sale-tracker">Sale Tracker</a>
-    </div>
-    {% set p = request.path %}
-    <nav class="st-nav">
-        <div class="st-nav-inner">
-            <h1 class="st-nav-title">Etsy Manager</h1>
-            <div class="st-nav-links">
-                {% if session.get('access_token') %}
-                <a href="/dashboard" class="{{ 'active' if p == '/dashboard' or p == '/' else '' }}">Dashboard</a>
-                <a href="/stats" class="{{ 'active' if p.startswith('/stats') else '' }}">Stats</a>
-                <a href="/bulk-update" class="{{ 'active' if p.startswith('/bulk-update') else '' }}">Bulk Update</a>
-                <a href="/phone" class="{{ 'active' if p.startswith('/phone') else '' }}">Phone</a>
-                <a href="https://www.etsy.com/shop/TEXSTYLS" target="_blank" rel="noopener">Etsy Shop <i class="bi bi-box-arrow-up-right"></i></a>
-                {% else %}
-                <a href="/login" class="{{ 'active' if p == '/login' else '' }}">Sign in with Etsy</a>
-                {% endif %}
-            </div>
+    {% set _path = request.path %}
+    {% set _is_generator = _path.startswith('/sku-generator') %}
+    {% set _is_tracker = _path.startswith('/sale-tracker') %}
+
+    <header class="shell-bar">
+        <div class="shell-row">
+            <a class="shell-brand" href="/dashboard">
+                <img src="/static/texstyls-logo.png" alt="">
+                <span>TexStyls</span>
+                <span class="shell-version">v{{ app_version }}</span>
+            </a>
+            <nav class="shell-tabs">
+                <a class="shell-tab{% if not _is_generator and not _is_tracker %} active{% endif %}"
+                   href="/dashboard"><i class="bi bi-shop"></i> Manager</a>
+                <a class="shell-tab{% if _is_generator %} active{% endif %}"
+                   href="/sku-generator"><i class="bi bi-upc-scan"></i> Generator</a>
+                <a class="shell-tab{% if _is_tracker %} active{% endif %}"
+                   href="/sale-tracker"><i class="bi bi-graph-up-arrow"></i> Tracker</a>
+            </nav>
+            <span class="shell-spacer"></span>
             {% if session.get('access_token') %}
-            <div class="st-nav-right">
-                <span class="st-nav-user"><i class="bi bi-person-circle"></i> {{ session.get('shop_name', session.get('user_name', 'User')) }}</span>
-                <a href="/logout" class="st-nav-logout">Logout</a>
-            </div>
+            <span class="shell-user"><i class="bi bi-person-circle"></i>
+                <span class="shell-name">{{ session.get('shop_name', session.get('user_name', 'User')) }}</span></span>
+            <a class="shell-logout" href="/logout"><i class="bi bi-box-arrow-right"></i> Logout</a>
+            {% else %}
+            <a class="shell-logout" href="/login"><i class="bi bi-box-arrow-in-right"></i> Sign in with Etsy</a>
             {% endif %}
         </div>
-    </nav>
-    <div style="background-color: #fff; padding: 10px 0; text-align: center; border-bottom: 1px solid #e9ecef;">
-        <img src="/static/texstyls-logo.png" alt="TEXSTYLS Handwoven Innovations" style="height: 60px; width: auto;">
-    </div>
-
-    <div class="container">
-        <div class="flash-container">
-            {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-            {% for category, message in messages %}
-            <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-                {{ message }}
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            </div>
-            {% endfor %}
-            {% endif %}
-            {% endwith %}
+        {% if session.get('access_token') %}
+        <div class="shell-row shells-row-sub">
+            <nav class="shell-sub">
+                <a href="/dashboard" class="{% if _path == '/dashboard' or _path == '/' %}sub-active{% endif %}">
+                    <i class="bi bi-grid-3x3-gap"></i> Dashboard</a>
+                <a href="/stats" class="{% if _path.startswith('/stats') %}sub-active{% endif %}">
+                    <i class="bi bi-bar-chart-line"></i> Stats</a>
+                <a href="/bulk-update" class="{% if _path.startswith('/bulk-update') %}sub-active{% endif %}">
+                    <i class="bi bi-pencil-square"></i> Bulk Update</a>
+                <a href="/phone" class="{% if _path.startswith('/phone') %}sub-active{% endif %}">
+                    <i class="bi bi-phone"></i> Phone</a>
+                <a href="https://www.etsy.com/shop/TEXSTYLS" target="_blank" rel="noopener">
+                    Etsy Shop <i class="bi bi-box-arrow-up-right"></i></a>
+            </nav>
         </div>
+        {% endif %}
+    </header>
 
-        {% block content %}{% endblock %}
-    </div>
+    <main class="shell-page">
+        <div class="shell-card">
+            <div class="flash-container">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show mb-0" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+                {% endfor %}
+                {% endif %}
+                {% endwith %}
+            </div>
+            <div class="shell-body">
+                {% block content %}{% endblock %}
+            </div>
+        </div>
+    </main>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <!-- Loading bar for slow pages -->
     <style>
         #page-loader {
             position: fixed; top: 0; left: 0; height: 3px; width: 0;
-            background: #f56400; z-index: 9999;
+            background: var(--accent); z-index: 9999;
             transition: width 0.3s ease;
             box-shadow: 0 0 8px rgba(245,100,0,0.6);
         }
@@ -211,7 +261,6 @@
                     bar.classList.add('loading');
                 });
             });
-            // Also show briefly on any internal nav if desired
             window.addEventListener('pageshow', function () {
                 bar.classList.remove('loading');
                 bar.classList.add('done');
