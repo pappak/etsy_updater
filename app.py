@@ -205,8 +205,8 @@ def login_required(f):
 
 @app.route("/")
 def index():
-    """Skip the landing page — straight to the dashboard (or sign-in)."""
-    return redirect(url_for("dashboard"))
+    """Landing page linking all three workshop apps."""
+    return render_template("landing.html")
 
 
 @app.route("/login")

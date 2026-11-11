@@ -169,6 +169,7 @@
 </head>
 <body>
     {% set _path = request.path %}
+    {% set _is_landing = (_path == '/') %}
     {% set _is_generator = _path.startswith('/sku-generator') %}
     {% set _is_tracker = _path.startswith('/sale-tracker') %}
 
@@ -180,7 +181,7 @@
                 <span class="shell-version">v{{ app_version }}</span>
             </a>
             <nav class="shell-tabs">
-                <a class="shell-tab{% if not _is_generator and not _is_tracker %} active{% endif %}"
+                <a class="shell-tab{% if not _is_landing and not _is_generator and not _is_tracker %} active{% endif %}"
                    href="/dashboard"><i class="bi bi-shop"></i> Manager</a>
                 <a class="shell-tab{% if _is_generator %} active{% endif %}"
                    href="/sku-generator"><i class="bi bi-upc-scan"></i> Generator</a>
@@ -199,7 +200,7 @@
         {% if session.get('access_token') %}
         <div class="shell-row shells-row-sub">
             <nav class="shell-sub">
-                <a href="/dashboard" class="{% if _path == '/dashboard' or _path == '/' %}sub-active{% endif %}">
+                <a href="/dashboard" class="{% if _path == '/dashboard' %}sub-active{% endif %}">
                     <i class="bi bi-grid-3x3-gap"></i> Dashboard</a>
                 <a href="/stats" class="{% if _path.startswith('/stats') %}sub-active{% endif %}">
                     <i class="bi bi-bar-chart-line"></i> Stats</a>
