@@ -135,6 +135,10 @@
         }
         .shell-card > .flash-container { padding: 0; }
         .flash-container .alert:first-child { border-radius: 14px 14px 0 0; }
+        /* Breathing room inside the card: content no longer touches the
+           card edges (headings carry their own top margins, so the top
+           stays slim). */
+        .shell-body { padding: 0.25rem 1.5rem 1.25rem; }
         /* ============ Shared accents ============ */
         .shell-accent { color: var(--accent); }
         .btn-accent {
