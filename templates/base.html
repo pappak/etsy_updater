@@ -24,6 +24,10 @@
             background: linear-gradient(180deg, var(--brand) 0%, var(--brand-dark) 100%);
             color: #fff;
             border-bottom: 2px solid rgba(0,0,0,0.25);
+            /* Brought in like the generator: the bar spans the content
+               column, not the whole viewport. */
+            max-width: var(--shell-width);
+            margin: 0 auto;
         }
         .shell-row {
             max-width: var(--shell-width);
